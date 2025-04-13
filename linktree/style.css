@@ -10,6 +10,10 @@
    margin: 0;
  }
  
+ html {
+   font-family: 'M PLUS Rounded 1c', sans-serif;
+ }
+
  body {
    align-items: center;
    background-color: #FFFFFF;
@@ -18,7 +22,6 @@
    text-align: center;
    height: 100vh;
    margin: 0;
-   font-family: 'M PLUS Rounded 1c', sans-serif;
  }
  
  /*
@@ -72,6 +75,8 @@
 a {
     text-decoration: none; /* Remove underline */
     color: inherit; /* Inherit color from parent */
+    font-weight: bold; /* Bold all links in the linktree */
+    font-size: 1.2em; /* Slightly larger font size for links */
 }
 
 a:visited {
