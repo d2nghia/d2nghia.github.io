@@ -108,6 +108,8 @@ a:hover {
     background-color: none; /* Remove debug background */
     border: none; /* Remove debug border */
     animation: walk 10s infinite; /* Increase duration to slow down the pace */
+    transform-style: preserve-3d; /* Ensure child elements like the bubble don't mirror */
+    z-index: -1; /* Place the chicken behind other elements */
 }
 .minecraft-chicken .body {
     width: 35px; /* Smaller body */
@@ -164,10 +166,35 @@ a:hover {
     background-color: orange; /* Chicken leg color */
 }
 
-/* Remove styles related to the wings */
-.minecraft-chicken .wings,
+/* Update the wings to have a more blocky and layered Minecraft-style appearance */
 .minecraft-chicken .wing {
-    display: none; /* Hide wings completely */
+    width: 15px; /* Adjust wing width */
+    height: 15px; /* Adjust wing height */
+    background-color: #FFFFCC; /* Match chicken feather color */
+    border: 2px solid black; /* Outline for the wings */
+    position: absolute;
+    display: block;
+}
+.minecraft-chicken .wing.left {
+    transform-origin: right center;
+    left: -10px; /* Position left wing */
+    top: 5px;
+    animation: flap-small 1.5s infinite;
+}
+.minecraft-chicken .wing.right {
+    transform-origin: left center;
+    right: -10px; /* Position right wing */
+    top: 5px;
+    animation: flap-small 1.5s infinite;
+}
+
+@keyframes flap-small {
+    0%, 100% {
+        transform: rotate(0deg); /* Default position */
+    }
+    50% {
+        transform: rotate(10deg); /* Flap position */
+    }
 }
 
 /* Add styles for the comb to signify the chicken is male */
@@ -181,19 +208,69 @@ a:hover {
     left: 7.5px; /* Center comb on the head */
 }
 
+/* Refine the speech bubble's position and prevent mirroring */
+.minecraft-chicken .speech-bubble {
+    position: absolute;
+    top: -80px; /* Move bubble further above the chicken */
+    left: auto; /* Remove fixed alignment */
+    right: -20px; /* Position bubble slightly to the right of the head */
+    transform: translateX(-50%) translateY(0) scaleX(1); /* Ensure proper alignment without flipping */
+    transform-origin: center; /* Prevent flipping */
+    background-color: #FFFFCC; /* Light yellow background */
+    border: 2px solid black; /* Black border for Minecraft style */
+    border-radius: 5px; /* Slightly rounded corners */
+    padding: 5px 10px; /* Add padding for text */
+    font-size: 12px; /* Adjust font size */
+    font-family: 'M PLUS Rounded 1c', sans-serif; /* Match page font */
+    white-space: nowrap; /* Prevent text wrapping */
+    box-shadow: 2px 2px 0px black; /* Add a shadow for depth */
+    z-index: -1; /* Place the bubble and trail behind other elements */
+}
+
+/* Ensure the speech bubble text does not mirror when the chicken flips */
+.minecraft-chicken .speech-bubble {
+    transform: translateX(-50%) translateY(0) scaleX(1) !important; /* Force proper alignment without flipping */
+}
+
+/* Adjust the speech trail to create a staggered diagonal effect */
+.minecraft-chicken .speech-trail {
+    position: absolute;
+    top: -50px; /* Adjust position to move the trail higher */
+    left: 15%; /* Shift trail further to the left */
+    transform: translateX(-50%); /* Center alignment */
+    display: flex;
+    flex-direction: column; /* Arrange circles diagonally */
+    align-items: flex-start; /* Align circles to the left */
+    gap: 2px; /* Add spacing between circles */
+    z-index: -1; /* Place the bubble and trail behind other elements */
+}
+.minecraft-chicken .trail-circle:nth-child(1) {
+    transform: translateX(0); /* First circle stays in place */
+}
+.minecraft-chicken .trail-circle:nth-child(2) {
+    transform: translateX(5px); /* Second circle shifts slightly to the right */
+}
+.minecraft-chicken .trail-circle {
+    width: 5px;
+    height: 5px;
+    background-color: #FFFFCC; /* Match bubble color */
+    border: 2px solid black; /* Outline for circles */
+    border-radius: 50%; /* Make them circular */
+}
+
 /* Adjust the walking animation to make the pace more natural */
 @keyframes walk {
     0% {
-        transform: translateX(-30vw) scaleX(1); /* Start from slightly left */
+        transform: translateX(-25vw) scaleX(1); /* Start from slightly left */
     }
     50% {
-        transform: translateX(30vw) scaleX(1); /* Move to slightly right */
+        transform: translateX(25vw) scaleX(1); /* Move to slightly right */
     }
     51% {
-        transform: translateX(30vw) scaleX(-1); /* Flip direction */
+        transform: translateX(25vw) scaleX(-1); /* Flip direction */
     }
     100% {
-        transform: translateX(-30vw) scaleX(-1); /* Move back to slightly left */
+        transform: translateX(-25vw) scaleX(-1); /* Move back to slightly left */
     }
 }
 
