@@ -4,6 +4,12 @@
 /* 
  * BASICS
  */
+
+ * {
+  user-select: none; /* Prevent text selection */
+  outline: none; /* Remove focus outline */
+}
+
  html,
  body {
    height: 100%;
@@ -22,8 +28,9 @@
    text-align: center;
    height: 100vh;
    margin: 0;
+
  }
- 
+
  /*
   * MAIN CONTENT
   */
