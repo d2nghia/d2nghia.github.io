@@ -67,3 +67,17 @@
     justify-content: center;
     height: 100%;
 }
+
+/* Add custom styles for hyperlinks */
+a {
+    text-decoration: none; /* Remove underline */
+    color: inherit; /* Inherit color from parent */
+}
+
+a:visited {
+    color: inherit; /* Remove visited style */
+}
+
+a:hover {
+    color: #007BFF; /* Add a different color for hover */
+}
