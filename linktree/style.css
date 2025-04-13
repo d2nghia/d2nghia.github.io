@@ -93,3 +93,126 @@ a:visited {
 a:hover {
     color: #007BFF; /* Add a different color for hover */
 }
+
+/* Add styles for the Minecraft-style chicken */
+.minecraft-chicken {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50px; /* Reduce overall size */
+    height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: none; /* Remove debug background */
+    border: none; /* Remove debug border */
+    animation: walk 10s infinite; /* Increase duration to slow down the pace */
+}
+.minecraft-chicken .body {
+    width: 35px; /* Smaller body */
+    height: 35px;
+    background-color: #FFFFCC; /* Light yellow for the body */
+    border: 2px solid black;
+    position: relative;
+}
+.minecraft-chicken .head {
+    width: 25px; /* Smaller head */
+    height: 25px;
+    background-color: #FFFFCC; /* Light yellow for the head */
+    border: 2px solid black;
+    position: absolute;
+    top: -20px; /* Adjust position */
+    left: 7.5px;
+}
+.minecraft-chicken .beak {
+    width: 8px; /* Adjust beak size */
+    height: 5px;
+    background-color: orange; /* Chicken beak color */
+    position: absolute;
+    top: 12px; /* Adjust position */
+    left: 10px;
+    animation: eat 0.5s infinite; /* Apply eating animation */
+}
+.minecraft-chicken .eye {
+    width: 5px; /* Adjust eye size */
+    height: 5px;
+    background-color: black; /* Chicken eye color */
+    position: absolute;
+    top: 6px; /* Adjust position */
+    animation: blink 5s infinite; /* Apply blinking animation */
+}
+.minecraft-chicken .eye.left {
+    left: 5px;
+}
+.minecraft-chicken .eye.right {
+    right: 5px;
+}
+/* Ensure the legs are properly visible and connected to the body */
+/* Correct the position of the legs to place them at the bottom of the chicken's body */
+.minecraft-chicken .legs {
+    position: absolute; /* Ensure legs are positioned relative to the chicken */
+    bottom: -10px; /* Move legs to the bottom of the body */
+    display: flex;
+    justify-content: space-between;
+    width: 30px; /* Maintain leg spacing */
+}
+.minecraft-chicken .leg {
+    position: relative; /* Ensure legs are positioned within the legs container */
+    width: 6px; /* Maintain leg width */
+    height: 12px; /* Maintain leg height */
+    background-color: orange; /* Chicken leg color */
+}
+
+/* Remove styles related to the wings */
+.minecraft-chicken .wings,
+.minecraft-chicken .wing {
+    display: none; /* Hide wings completely */
+}
+
+/* Add styles for the comb to signify the chicken is male */
+.minecraft-chicken .comb {
+    width: 10px;
+    height: 10px;
+    background-color: red; /* Red color for the comb */
+    border-radius: 50%; /* Rounded shape for the comb */
+    position: absolute;
+    top: -10px; /* Position comb above the head */
+    left: 7.5px; /* Center comb on the head */
+}
+
+/* Adjust the walking animation to make the pace more natural */
+@keyframes walk {
+    0% {
+        transform: translateX(-30vw) scaleX(1); /* Start from slightly left */
+    }
+    50% {
+        transform: translateX(30vw) scaleX(1); /* Move to slightly right */
+    }
+    51% {
+        transform: translateX(30vw) scaleX(-1); /* Flip direction */
+    }
+    100% {
+        transform: translateX(-30vw) scaleX(-1); /* Move back to slightly left */
+    }
+}
+
+/* Add eating animation to the chicken's beak */
+@keyframes eat {
+    0%, 100% {
+        transform: translateY(0); /* Default position */
+    }
+    50% {
+        transform: translateY(2px); /* Move beak slightly down */
+    }
+}
+
+/* Add blinking animation to the chicken's eyes */
+@keyframes blink {
+    0%, 90%, 100% {
+        height: 5px; /* Normal eye size */
+    }
+    95% {
+        height: 1px; /* Blink (narrow eye) */
+    }
+}
