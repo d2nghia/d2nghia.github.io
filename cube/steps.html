@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cube Steps</title>
+<meta name="description" content="The seven steps for solving a 3x3 cube, drawn as cube pictures with an arrow on the layer that turns.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="card">
+    <h1 style="font-size:clamp(1.6rem,5vw,2.2rem)">The seven steps</h1>
+    <p style="margin-top:8px">Every picture is a cube. The arrow shows the layer that turns and which way it goes. Work down a row, one picture at a time.</p>
+    <div class="row" style="margin-top:14px">
+      <a class="btn ghost small" href="index.html" style="text-decoration:none">Rather have the camera guide me? 📷</a>
+      <label class="toggle"><input type="checkbox" id="show-letters"> Show the letters (R U R′)</label>
+    </div>
+  </header>
+
+  <div class="watch" id="watch">
+    <div class="watch-cube cube-stage" id="watch-cube" aria-label="A cube you can spin. Drag it."></div>
+    <div class="watch-side">
+      <p class="small muted" id="watch-what">Pick any “Watch this” button and the moves play here.</p>
+      <p class="turn-word dark" id="watch-word"></p>
+      <div class="row">
+        <button class="btn small" id="watch-play">▶ Play</button>
+        <button class="btn ghost small" id="watch-step">Step ▸</button>
+        <button class="btn ghost small" id="watch-reset">↺ Reset</button>
+      </div>
+      <p class="small muted">Drag the cube to look round the back.</p>
+    </div>
+  </div>
+
+  <main id="stages"></main>
+
+  <p class="small muted" style="margin-top:28px; text-align:center">
+    <a href="/linktree/" style="color:inherit">← back to the links</a>
+  </p>
+</div>
+
+<script src="solver.js"></script>
+<script src="cubeview.js"></script>
+<script src="steps.js"></script>
+</body>
+</html>

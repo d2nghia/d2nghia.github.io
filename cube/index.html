@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cube Coach</title>
+<meta name="description" content="Show your Rubik's cube to the camera and get the next turn, one at a time, in words a kid can follow.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ start ============ -->
+  <section class="screen hero" id="screen-start">
+    <div class="card">
+      <h1>Cube Coach</h1>
+      <p class="lede">Show me your cube and I will tell you one turn at a time, until it is solved. No letters to learn.</p>
+      <ol class="steps">
+        <li>Show all six sides to the camera.</li>
+        <li>Check the colours I read — tap any sticker I get wrong.</li>
+        <li>Follow the turns. One turn, one button.</li>
+      </ol>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="go-camera">Show me your cube 📷</button>
+        <a class="btn ghost" href="steps.html" style="text-decoration:none; display:inline-block">Just show me the steps 📖</a>
+        <button class="btn ghost" id="go-demo">Try a practice cube 🎲</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="linkish" id="go-manual">No camera? Tap the colours in instead</button>
+      </div>
+      <p class="small muted" style="margin-top:12px">Works best in good light. The camera picture never leaves this page — nothing is uploaded.</p>
+    </div>
+  </section>
+
+  <!-- ============ capture ============ -->
+  <section class="screen" id="screen-capture" hidden>
+    <div class="cap-model">
+      <div class="cube-stage" id="cap-cube" aria-label="Your cube. Drag to spin it, click a sticker to paint it."></div>
+    </div>
+
+    <div class="toolbar" id="cap-tools">
+      <div class="palette" id="cap-palette"></div>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="btn tool" id="cap-open-cam"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/></svg> Auto colour using camera</button>
+    </div>
+
+    <p class="cap-colour" id="cap-colour"><b></b><span></span></p>
+    <p class="small muted center" id="cap-hint"></p>
+    <p class="small warn-line center" id="cap-msg" hidden></p>
+
+    <div class="row center">
+      <button class="btn go" id="cap-solve">Solve it ▶</button>
+      <button class="linkish" id="cap-restart">Start again</button>
+    </div>
+  </section>
+
+  <!-- ============ camera popup ============ -->
+  <div class="modal" id="cam-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+      <p class="tell" id="cam-title">Point the camera at the glowing side</p>
+
+      <div class="cam-wrap" id="cam-wrap">
+        <video id="cam" playsinline muted autoplay></video>
+        <div class="guide" id="cam-guide"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+        <p class="cam-msg" id="cam-msg" hidden></p>
+      </div>
+
+      <div class="detected">
+        <div class="grid3" id="cam-grid"></div>
+        <p class="small muted" id="cam-status"></p>
+      </div>
+
+      <div class="palette" id="cam-palette"></div>
+
+      <div class="row center modal-actions">
+        <button class="btn" id="cam-capture">Capture</button>
+        <button class="btn go" id="cam-accept" disabled>Accept ✓</button>
+        <button class="linkish" id="cam-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ check / net editor ============ -->
+  <section class="screen" id="screen-check" hidden>
+    <div class="card" id="check-note">
+      <p class="tell" id="check-title"></p>
+      <p class="small muted" id="check-hint"></p>
+    </div>
+    <div class="card">
+      <p class="small muted">Tap any sticker to fix it. The middle sticker of each side decides that side's colour.</p>
+      <div class="net" id="net" style="margin-top:12px"></div>
+      <div class="palette" id="net-palette" style="margin-top:14px"></div>
+      <div class="row center" style="margin-top:16px">
+        <button class="btn ghost" id="net-redo">Use the camera again</button>
+        <button class="btn go" id="net-solve">Start the lesson ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ coach ============ -->
+  <section class="screen" id="screen-coach" hidden>
+    <div class="stage-strip" id="stage-strip"></div>
+    <div class="card">
+      <p class="small muted" id="coach-step"></p>
+      <h2 id="coach-stage"></h2>
+      <p id="coach-goal" style="margin-top:6px"></p>
+      <div class="case" id="coach-case" hidden>
+        <div class="grid3" id="coach-case-grid"></div>
+        <p class="small" id="coach-case-text"></p>
+      </div>
+      <div class="bar" style="margin-top:12px"><i id="coach-bar"></i></div>
+    </div>
+
+    <div class="mat">
+      <div class="cube-stage" id="coach-cube" aria-label="Your cube. Drag to spin it."></div>
+      <div class="turn-word" id="coach-word"></div>
+      <div class="letters" id="coach-letters" hidden></div>
+      <p class="spin-hint">Drag the cube to look around it</p>
+    </div>
+
+    <div class="row center">
+      <button class="btn ghost small" id="coach-back">↶ Undo</button>
+      <button class="btn ghost small" id="coach-again">↺ Watch again</button>
+      <button class="btn" id="coach-next">I did it ▶</button>
+    </div>
+    <div class="row center">
+      <div class="hold" id="coach-hold"></div>
+    </div>
+    <div class="row center">
+      <label class="toggle"><input type="checkbox" id="coach-show-letters"> Show the grown-up letters</label>
+      <button class="linkish" id="coach-restart">Start over</button>
+    </div>
+  </section>
+
+  <!-- ============ done ============ -->
+  <section class="screen" id="screen-done" hidden>
+    <div class="card done-card">
+      <h2>Solved! 🎉</h2>
+      <p id="done-count" class="muted"></p>
+      <p>Scramble it and do it again — next time you will remember the fish move.</p>
+      <button class="btn" id="done-again">Solve another one</button>
+    </div>
+  </section>
+
+  <p class="small muted" style="margin-top:28px; text-align:center">
+    <a href="/linktree/" style="color:inherit">← back to the links</a>
+  </p>
+</div>
+
+<script src="solver.js"></script>
+<script src="cubeview.js"></script>
+<script src="capture.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
