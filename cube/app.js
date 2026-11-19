@@ -241,7 +241,6 @@
       .then(function (stream) {
         cam.stream = stream;
         video.srcObject = stream;
-        msg.hidden = true;
         return video.play().catch(function () { });
       })
       .then(function () {
@@ -257,7 +256,14 @@
         }, 6000);
       })
       .catch(function (err) {
-        cameraFailed(cameraTrouble(err));
+        /* If a stream was already handed over, the camera is not the problem —
+         * saying "no camera" would send the child hunting for the wrong thing. */
+        if (cam.stream) {
+          cameraFailed('The camera started but this page could not use the picture. ' +
+            'Paint the colours in by hand, and tell whoever made this page.');
+        } else {
+          cameraFailed(cameraTrouble(err));
+        }
       });
   }
   /** Nothing to capture or correct, so the popup becomes a plain explanation. */
