@@ -82,7 +82,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [] };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], held: null, manual: false, candidate: { key: '', cells: null, streak: 0 } };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -156,8 +156,7 @@
     cam.history = [];
     $('cam-modal').hidden = false;
     resetCameraPopup();
-    setCaptured(false);
-    renderCamGrid();
+    clearHeld();
     if (!cam.palette) {
       cam.palette = makePalette($('cam-palette'), function (colour) {
         capPalette.set(colour);
@@ -284,7 +283,7 @@
   function resetCameraPopup() {
     $('cam-msg').hidden = true;
     $('cam-guide').hidden = false;
-    $('cam-title').textContent = 'Point the camera at the glowing side';
+    $('cam-title').textContent = 'Hold the glowing side up to the camera';
     $('cam-modal').querySelector('.modal-card').classList.remove('trouble');
     $('cam-cancel').textContent = 'Cancel';
     $('cam-capture').disabled = false;
@@ -363,13 +362,15 @@
     } else {
       cam.history.length = 0;
     }
-    cam.cells = cam.found ? cam.found.names : new Array(9).fill(null);
+    considerReading(cam.found);
+    if (!cam.held) cam.cells = cam.found ? cam.found.names : new Array(9).fill(null);
     drawFoundGrid();
     renderCamGrid();
     if (cam.live) {
-      $('cam-status').textContent = cam.found
-        ? 'Got it. Press Capture when the colours below look right.'
-        : 'Hold a side of the cube in the square.';
+      if (cam.held) sayHeld();
+      else $('cam-status').textContent = cam.found
+        ? 'Reading it — hold still…'
+        : 'Hold a side of the cube up to the camera.';
     }
   }
 
@@ -402,29 +403,77 @@
     if (!camGrid) {
       camGrid = makeGrid($('cam-grid'),
         function (i) { return cam.cells[i]; },
-        function (i) { if (!cam.live) cam.cells[i] = cam.palette.get(); });
+        function (i) {
+          if (!cam.held) return;                     // nothing to correct yet
+          cam.manual = true;
+          cam.cells[i] = cam.palette.get();
+          cam.held.cells[i] = cam.cells[i];
+          sayHeld();
+        });
     }
     camGrid.render();
   }
 
   /** Capture freezes the picture so the reading can be corrected before it lands. */
-  function setCaptured(on) {
-    stopLive();
-    $('cam-grid').classList.toggle('editable', on);
-    $('cam-accept').disabled = !on;
-    $('cam-capture').textContent = on ? 'Take it again' : 'Capture';
-    $('cam-capture').disabled = false;
-    $('cam-shot').hidden = !on;
-    if (on) {
-      $('cam').pause();
-      $('cam-shot').src = faceThumbnail();
-      var unsure = cam.cells.filter(function (c) { return !c; }).length;
-      $('cam-status').textContent = unsure
-        ? (unsure === 1 ? 'One square was not clear — tap a colour onto the grey one, or take it again.'
-          : unsure + ' squares were not clear — tap colours onto the grey ones, or take it again.')
-        : 'Any sticker wrong? Pick a colour and tap it, then Accept.';
-    }
+  /**
+   * Keep a reading once it settles.
+   *
+   * Holding a cube still with one hand and reaching for a button with the other
+   * is a job a child does not have the hands for. So the page watches until the
+   * same nine colours come back several times over, keeps that reading, and
+   * then the cube can be put down.
+   */
+  function holdReading(cells) {
+    cam.held = { cells: cells.slice() };
+    cam.cells = cells.slice();
+    $('cam-shot').src = faceThumbnail();
+    $('cam-shot').hidden = false;
+    $('cam-accept').disabled = false;
+    $('cam-grid').classList.add('editable');
+    $('cam-grid').classList.remove('locking');
+    void $('cam-grid').offsetWidth;                  // restart the flash
+    $('cam-grid').classList.add('locking');
+    renderCamGrid();
+    sayHeld();
   }
+  function sayHeld() {
+    var unsure = cam.held.cells.filter(function (c) { return !c; }).length;
+    $('cam-status').textContent = unsure
+      ? (unsure === 1 ? 'Got it, but one square was not clear — tap a colour onto the grey one.'
+        : 'Got it, but ' + unsure + ' squares were not clear — tap colours onto the grey ones.')
+      : 'Got it. Put the cube down, then press Accept.';
+  }
+  function clearHeld() {
+    cam.held = null;
+    cam.manual = false;
+    cam.candidate = { key: '', cells: null, streak: 0 };
+    cam.cells = new Array(9).fill(null);
+    $('cam-shot').hidden = true;
+    $('cam-accept').disabled = true;
+    $('cam-grid').classList.remove('editable', 'locking');
+    renderCamGrid();
+  }
+
+  /** Decide whether this frame's reading is steady enough to keep. */
+  function considerReading(found) {
+    if (cam.manual) return;                          // a colour was fixed by hand: leave it alone
+    if (!found) { cam.candidate = { key: '', cells: null, streak: 0 }; return; }
+    var cells = found.names;
+    if (cam.history.length > 1) {
+      cells = K.settle(cam.history.map(function (h) { return h.patches; }),
+        cam.history.map(function (h) { return h.sure; }));
+    }
+    var known = cells.filter(function (c) { return c; }).length;
+    if (known < 7) { cam.candidate = { key: '', cells: null, streak: 0 }; return; }
+    var key = cells.join(',');
+    if (key === cam.candidate.key) cam.candidate.streak++;
+    else cam.candidate = { key: key, cells: cells, streak: 1 };
+    /* A complete reading only has to hold for a moment; one with a grey square
+     * has to prove itself for longer, in case it is about to come good. */
+    var needed = known === 9 ? 3 : 7;
+    if (cam.candidate.streak >= needed) holdReading(cam.candidate.cells);
+  }
+
   /** The square the reading came from, cut out for checking against the colours. */
   function faceThumbnail() {
     if (!cam.canvas) return '';
@@ -436,29 +485,11 @@
     return out.toDataURL('image/jpeg', 0.8);
   }
 
-  function doCapture() {
-    if ($('cam-accept').disabled) {
-      sampleFrame();
-      if (!cam.found) {
-        $('cam-status').textContent = 'I cannot see a side of the cube yet. Hold it in the square and try again.';
-        return;
-      }
-      if (cam.history.length > 1) {
-        cam.cells = K.settle(cam.history.map(function (h) { return h.patches; }),
-          cam.history.map(function (h) { return h.sure; }));
-        renderCamGrid();
-      }
-      setCaptured(true);
-    } else {
-      $('cam').play().catch(function () { });
-      setCaptured(false);
-      startLive();
-    }
-  }
   function acceptCamera() {
+    var cells = cam.held ? cam.held.cells : cam.cells;
     var base = L.FACE_ORDER.indexOf(cam.place.face) * 9;
     for (var j = 0; j < 9; j++) {
-      if (cam.cells[j]) names[base + cam.place.fromCamera[j]] = cam.cells[j];
+      if (cells[j]) names[base + cam.place.fromCamera[j]] = cells[j];
     }
     paintModel();
     closeCamera();
@@ -780,7 +811,7 @@
   $('coach-restart').onclick = function () { closeCamera(); show('start'); };
   $('done-again').onclick = function () { show('start'); };
   $('cap-open-cam').onclick = openCamera;
-  $('cam-capture').onclick = doCapture;
+  $('cam-capture').onclick = clearHeld;
   $('cam-accept').onclick = acceptCamera;
   $('cam-cancel').onclick = closeCamera;
   $('cam-modal').onclick = function (e) { if (e.target === this) closeCamera(); };

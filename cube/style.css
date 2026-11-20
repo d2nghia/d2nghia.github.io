@@ -167,6 +167,12 @@ button { font-family: var(--font-body); }
 .detected .small { text-align: center; }
 .modal .grid3 { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
 .modal .grid3:not(.editable) button { cursor: default; }
+/* a moment's flash when a reading settles, so it is clear it was kept */
+.modal .grid3.locking { animation: kept .5s ease-out; border-radius: 12px; }
+@keyframes kept {
+  0% { box-shadow: 0 0 0 0 rgba(26, 166, 91, .85); }
+  100% { box-shadow: 0 0 0 14px rgba(26, 166, 91, 0); }
+}
 .modal .grid3.editable button { cursor: inherit; }
 .modal-actions { gap: 10px; }
 .modal-card.trouble .detected,
