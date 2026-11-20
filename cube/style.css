@@ -104,7 +104,13 @@ button { font-family: var(--font-body); }
   display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
   pointer-events: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .35);
 }
-.guide div { border: 1px solid rgba(255, 255, 255, .45); }
+.guide div { border: 1px solid rgba(255, 255, 255, .45); display: grid; place-items: center; }
+/* each ring marks exactly the pixels that cell is read from */
+.guide div::after {
+  content: ""; width: 40%; height: 40%; border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .35), inset 0 0 0 2px rgba(0, 0, 0, .2);
+}
 .cam-msg { position: absolute; color: #fff; text-align: center; padding: 24px; font-size: .95rem; }
 
 .tell { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; }
@@ -160,6 +166,8 @@ button { font-family: var(--font-body); }
 .modal-card .tell { text-align: center; font-size: 1.05rem; }
 .modal .cam-wrap { width: 100%; aspect-ratio: 4 / 3; max-height: 38vh; }
 .detected { display: grid; justify-items: center; gap: 6px; }
+.detected-row { display: flex; gap: 12px; align-items: center; justify-content: center; }
+#cam-shot { width: 118px; height: 118px; border-radius: 10px; border: 2px solid var(--line); object-fit: cover; }
 .detected .small { text-align: center; }
 .modal .grid3 { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); }
 .modal .grid3:not(.editable) button { cursor: default; }

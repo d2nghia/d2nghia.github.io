@@ -103,6 +103,53 @@ ANGLES.forEach(function (a) {
 });
 check('a mirrored capture is rejected', !C.validate(mirrored).ok, JSON.stringify(C.validate(mirrored)));
 
+/* reading a whole face, which is how the page actually does it */
+const CUBE_RGB = {
+  white: [250, 250, 250], yellow: [255, 212, 0], green: [0, 165, 80],
+  blue: [23, 105, 214], red: [225, 55, 43], orange: [255, 132, 0]
+};
+/** A face under a given light: gains per channel, overall brightness, and noise. */
+function litFace(names, opts) {
+  opts = opts || {};
+  const gain = opts.gain || [1, 1, 1], lift = opts.lift || 0, scale = opts.scale == null ? 1 : opts.scale;
+  return names.map(function (n, i) {
+    const c = CUBE_RGB[n];
+    const wobble = opts.wobble ? ((i * 37) % 21) - 10 : 0;     // repeatable per-sticker variation
+    return {
+      r: Math.max(0, Math.min(255, c[0] * gain[0] * scale + lift + wobble)),
+      g: Math.max(0, Math.min(255, c[1] * gain[1] * scale + lift + wobble)),
+      b: Math.max(0, Math.min(255, c[2] * gain[2] * scale + lift + wobble))
+    };
+  });
+}
+function readsBack(names, opts, label) {
+  const got = K.classifyFace(litFace(names, opts));
+  const same = got.every(function (g, i) { return g === names[i]; });
+  check('a face reads back under ' + label, same, same ? '' : 'got ' + got.join(','));
+}
+
+const MIXED = ['blue', 'red', 'blue', 'yellow', 'red', 'yellow', 'white', 'white', 'white'];
+const ONE_COLOUR = ['white', 'white', 'white', 'white', 'white', 'white', 'white', 'white', 'white'];
+const ALL_SIX = ['white', 'yellow', 'green', 'blue', 'red', 'orange', 'white', 'green', 'blue'];
+
+readsBack(MIXED, {}, 'plain light');
+readsBack(MIXED, { gain: [1.12, 1.02, 0.82], label: 'warm' }, 'a warm bulb');
+readsBack(MIXED, { gain: [0.88, 0.98, 1.15] }, 'a cool bulb');
+readsBack(MIXED, { scale: 0.55 }, 'a dim room');
+readsBack(MIXED, { scale: 0.75, lift: 28, wobble: true }, 'washed-out light with noise');
+readsBack(ALL_SIX, {}, 'plain light, all six colours');
+readsBack(ALL_SIX, { gain: [1.12, 1.02, 0.82] }, 'a warm bulb, all six colours');
+readsBack(ALL_SIX, { scale: 0.6, wobble: true }, 'a dim room, all six colours');
+readsBack(ONE_COLOUR, {}, 'a face that is all one colour');
+readsBack(ONE_COLOUR, { gain: [1.12, 1.02, 0.82] }, 'an all-white face under a warm bulb');
+
+/* the old reading, one sticker at a time, got this face wrong — it must not now */
+const warmMixed = litFace(MIXED, { gain: [1.15, 1.03, 0.78] });
+const oneByOne = warmMixed.map(function (c) { return K.classify(c.r, c.g, c.b); });
+const together = K.classifyFace(warmMixed);
+check('judging the nine together beats one at a time',
+  together.join(',') === MIXED.join(',') , 'together=' + together.join(',') + ' oneByOne=' + oneByOne.join(','));
+
 /* colour reading */
 const SWATCHES = {
   white: [250, 250, 250], yellow: [255, 212, 0], green: [0, 165, 80],

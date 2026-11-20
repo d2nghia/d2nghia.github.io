@@ -97,30 +97,85 @@
     return { face: frame.front, frame: frame, fromCamera: inv };
   }
 
-  /** Name the colour of an average sticker patch, or null when it is too dark to tell. */
-  function classify(r, g, b) {
-    var max = Math.max(r, g, b), min = Math.min(r, g, b);
-    var v = max / 255, s = max ? (max - min) / max : 0, h = 0;
-    if (max !== min) {
-      var d = max - min;
+  function toHsv(c) {
+    var r = c.r / 255, g = c.g / 255, b = c.b / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    var h = 0;
+    if (d) {
       if (max === r) h = 60 * (((g - b) / d) % 6);
       else if (max === g) h = 60 * ((b - r) / d + 2);
       else h = 60 * ((r - g) / d + 4);
       if (h < 0) h += 360;
     }
-    if (v < 0.18) return null;
-    if (s < 0.22 || (v > 0.72 && s < 0.3)) return 'white';
-    if (h < 14 || h >= 345) return 'red';
-    if (h < 42) return 'orange';
-    if (h < 70) return 'yellow';
-    if (h < 170) return 'green';
-    if (h < 265) return 'blue';
+    return { h: h, s: max ? d / max : 0, v: max };
+  }
+
+  function hueName(h) {
+    if (h < 18 || h >= 345) return 'red';
+    if (h < 45) return 'orange';
+    if (h < 72) return 'yellow';
+    if (h < 172) return 'green';
+    if (h < 268) return 'blue';
     return 'red';
+  }
+
+  /** Name one colour on its own. Kept for checking swatches; a face uses classifyFace. */
+  function classify(r, g, b) {
+    var c = toHsv({ r: r, g: g, b: b });
+    if (c.v < 0.18) return null;
+    if (c.s < 0.22 || (c.v > 0.72 && c.s < 0.3)) return 'white';
+    return hueName(c.h);
+  }
+
+  /**
+   * Name all nine stickers of one face together.
+   *
+   * Reading each sticker on its own fails under real light: a warm bulb pushes
+   * white towards yellow, and a dim corner pushes everything towards grey.
+   * Judging the nine against each other is far steadier, because whatever the
+   * light is doing, it is doing it to all nine.
+   *
+   * @param {{r:number,g:number,b:number}[]} samples nine patch colours, reading order
+   * @returns {(string|null)[]} nine colour names, null where it is too dark to tell
+   */
+  function classifyFace(samples) {
+    var n = samples.length, i;
+
+    // Take out the colour of the light itself: on average a face is roughly neutral.
+    var sum = { r: 0, g: 0, b: 0 };
+    for (i = 0; i < n; i++) { sum.r += samples[i].r; sum.g += samples[i].g; sum.b += samples[i].b; }
+    var avg = { r: sum.r / n || 1, g: sum.g / n || 1, b: sum.b / n || 1 };
+    var grey = (avg.r + avg.g + avg.b) / 3 || 1;
+    function gain(channelAvg) { return 1 + (grey / (channelAvg || 1) - 1) * 0.6; }
+    var gr = gain(avg.r), gg = gain(avg.g), gb = gain(avg.b);
+    function clamp(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+    var hsv = samples.map(function (c) {
+      return toHsv({ r: clamp(c.r * gr), g: clamp(c.g * gg), b: clamp(c.b * gb) });
+    });
+
+    // White is whatever is clearly less colourful than the rest of this face.
+    var sats = hsv.map(function (c) { return c.s; }).slice().sort(function (a, b) { return a - b; });
+    var cut = 0.26, bestGap = 0;
+    for (i = 0; i < n - 1; i++) {
+      var gap = sats[i + 1] - sats[i], mid = (sats[i] + sats[i + 1]) / 2;
+      if (gap > bestGap && mid > 0.12 && mid < 0.5) { bestGap = gap; cut = mid; }
+    }
+    if (bestGap < 0.08) cut = 0.26;                 // no clear split: everything is coloured, or all white
+    var maxV = 0;
+    for (i = 0; i < n; i++) if (hsv[i].v > maxV) maxV = hsv[i].v;
+
+    return hsv.map(function (c) {
+      if (c.v < 0.14) return null;                  // too dark to call
+      if (c.s < cut && c.v > maxV * 0.45) return 'white';
+      return hueName(c.h);
+    });
   }
 
   return {
     OPP: OPP, CANON: CANON, NORMAL: NORMAL,
     frameFromView: frameFromView, placement: placement,
-    readRotations: readRotations, rotateGrid: rotateGrid, classify: classify
+    readRotations: readRotations, rotateGrid: rotateGrid,
+    classify: classify, classifyFace: classifyFace, toHsv: toHsv
   };
 });

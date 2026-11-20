@@ -82,7 +82,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -319,6 +319,50 @@
   }
   window.addEventListener('resize', function () { if (!$('cam-modal').hidden) placeGuide(); });
 
+  /** One small square, ignoring its darkest and brightest quarter. */
+  function spotColour(ctx, x, y, size) {
+    var data = ctx.getImageData(x, y, size, size).data;
+    var px = [];
+    for (var i = 0; i < data.length; i += 4) {
+      px.push([data[i], data[i + 1], data[i + 2],
+        data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114]);
+    }
+    px.sort(function (a, b) { return a[3] - b[3]; });
+    var lo = Math.floor(px.length * 0.25), hi = Math.ceil(px.length * 0.75);
+    var r = 0, g = 0, b = 0, n = 0;
+    for (var j = lo; j < hi; j++) { r += px[j][0]; g += px[j][1]; b += px[j][2]; n++; }
+    return n ? { r: r / n, g: g / n, b: b / n } : { r: 0, g: 0, b: 0 };
+  }
+  function median(values) {
+    var v = values.slice().sort(function (a, b) { return a - b; });
+    return v[(v.length - 1) >> 1];
+  }
+  /**
+   * The colour of one sticker, taken as the middle of five spots spread across
+   * it. A reflection or a shadow usually spoils one or two of them, and the
+   * middle value ignores those; a single reading in the centre does not.
+   */
+  function patchColour(ctx, cx, cy) {
+    var off = 7, size = 10, spots = [];
+    [[0, 0], [-off, -off], [off, -off], [-off, off], [off, off]].forEach(function (d) {
+      spots.push(spotColour(ctx, cx + d[0] - size / 2, cy + d[1] - size / 2, size));
+    });
+    var mid = {
+      r: median(spots.map(function (s) { return s.r; })),
+      g: median(spots.map(function (s) { return s.g; })),
+      b: median(spots.map(function (s) { return s.b; }))
+    };
+    /* If the spots cannot agree, the square is probably not sitting on one
+     * sticker. Better to leave the cell grey than to write a colour that was
+     * never there. */
+    var agree = spots.filter(function (s) {
+      var dr = s.r - mid.r, dg = s.g - mid.g, db = s.b - mid.b;
+      return Math.sqrt(dr * dr + dg * dg + db * db) < 72;
+    }).length;
+    mid.sure = agree >= 3;
+    return mid;
+  }
+
   /** Read the nine stickers inside the guide square out of the current frame. */
   function sampleFrame() {
     var video = $('cam'), wrap = $('cam-wrap');
@@ -331,18 +375,16 @@
     var gx = (w - size) / 2, gy = (h - size) / 2;
     var fx = (gx - offX) / scale, fy = (gy - offY) / scale, fs = size / scale;
 
-    var canvas = document.createElement('canvas');
+    var canvas = cam.canvas || (cam.canvas = document.createElement('canvas'));
     canvas.width = canvas.height = 150;
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(video, fx, fy, fs, fs, 0, 0, 150, 150);
-    var cells = [];
+    var patches = [];
     for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
-      var data = ctx.getImageData(c * 50 + 17, r * 50 + 17, 16, 16).data;
-      var sr = 0, sg = 0, sb = 0, n = 0;
-      for (var p = 0; p < data.length; p += 4) { sr += data[p]; sg += data[p + 1]; sb += data[p + 2]; n++; }
-      cells.push(K.classify(sr / n, sg / n, sb / n));
+      patches.push(patchColour(ctx, c * 50 + 25, r * 50 + 25));
     }
-    cam.cells = cells;
+    var named = K.classifyFace(patches);
+    cam.cells = named.map(function (n, i) { return patches[i].sure ? n : null; });
     renderCamGrid();
   }
 
@@ -363,9 +405,15 @@
     $('cam-accept').disabled = !on;
     $('cam-capture').textContent = on ? 'Take it again' : 'Capture';
     $('cam-capture').disabled = false;
+    $('cam-shot').hidden = !on;
     if (on) {
       $('cam').pause();
-      $('cam-status').textContent = 'Any sticker wrong? Pick a colour and tap it, then Accept.';
+      if (cam.canvas) $('cam-shot').src = cam.canvas.toDataURL('image/jpeg', 0.75);
+      var unsure = cam.cells.filter(function (c) { return !c; }).length;
+      $('cam-status').textContent = unsure
+        ? (unsure === 1 ? 'One square was not clear — tap a colour onto the grey one, or take it again.'
+          : unsure + ' squares were not clear — tap colours onto the grey ones, or take it again.')
+        : 'Any sticker wrong? Pick a colour and tap it, then Accept.';
     }
   }
   function doCapture() {
