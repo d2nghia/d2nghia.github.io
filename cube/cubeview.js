@@ -90,6 +90,8 @@
   var UNSEEN = '#878f9e';
   function create(host, faceColour) {
     faceColour = faceColour || STANDARD;
+    // The whole mat accepts drags; the smaller stage still controls cube sizing.
+    var surface = host.closest('.cap-model, .mat') || host;
     var built = build(host), state = L.solvedState(), busy = false;
     var names = null;          // when set, the cube is drawn from colour names instead
     var focusFace = null;      // the side the camera will write onto
@@ -180,15 +182,16 @@
       var flip = Math.cos(view.rx * Math.PI / 180) < 0 ? -1 : 1;
       drag = { x: e.clientX, y: e.clientY, rx: view.rx, ry: view.ry, moved: false, flip: flip };
       built.cube.style.transition = 'none';
-      try { host.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+      try { surface.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
     }
 
-    host.addEventListener('pointerdown', function (e) {
+    surface.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('.cam-dock')) return;
       var mouse = e.pointerType === 'mouse';
       if (mouse && e.button === 0 && onSticker && faceletUnder(e) != null) {
         painting = true;
         paintAt(e);
-        try { host.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+        try { surface.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
         e.preventDefault();
         return;
       }
@@ -196,7 +199,7 @@
       if (mouse && e.button === 2) e.preventDefault();
       startDrag(e);
     });
-    host.addEventListener('pointermove', function (e) {
+    surface.addEventListener('pointermove', function (e) {
       if (painting) { paintAt(e); return; }
       if (!drag) return;
       if (Math.abs(e.clientX - drag.x) > 4 || Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
@@ -204,14 +207,14 @@
       view.rx = drag.rx - (e.clientY - drag.y) * 0.6;      // no stops: it rolls right over
       applyView();
     });
-    host.addEventListener('pointerup', function (e) {
+    surface.addEventListener('pointerup', function (e) {
       if (painting) { painting = false; drag = null; return; }
       var wasTap = drag && !drag.moved;
       drag = null;
       if (!wasTap || !onSticker) return;
       paintAt(e);
     });
-    host.addEventListener('pointercancel', function () { drag = null; painting = false; });
+    surface.addEventListener('pointercancel', function () { drag = null; painting = false; });
     window.addEventListener('resize', fit);
 
     repaint(null); applyView(); fit();

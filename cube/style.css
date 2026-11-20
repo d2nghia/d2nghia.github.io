@@ -235,6 +235,7 @@ button { font-family: var(--font-body); }
   width: 100%; max-width: 300px; aspect-ratio: 1 / 1; max-height: 50vh;
   display: grid; place-items: center; perspective: 900px; touch-action: none; cursor: grab;
 }
+.cap-model, .mat { touch-action: none; cursor: grab; }
 .cube { position: relative; width: 132px; height: 132px; transform-style: preserve-3d; }
 .cubie { position: absolute; width: 44px; height: 44px; left: 44px; top: 44px; transform-style: preserve-3d; }
 .sticker {
