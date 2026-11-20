@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261121e">
+<link rel="stylesheet" href="style.css?v=20261121p">
 </head>
 <body>
 <div class="wrap">
@@ -53,17 +53,16 @@
 
     <div class="toolbar" id="cap-tools">
       <div class="palette" id="cap-palette"></div>
-      <span class="tool-sep" aria-hidden="true"></span>
-      <button class="btn tool" id="cap-open-cam"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/></svg> <span data-t="cap.tool">Auto colour using camera</span></button>
+      <div class="row center">
+        <button class="btn tool" id="cap-open-cam"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/></svg> <span data-t="cap.tool">Auto colour using camera</span></button>
+        <button class="btn ghost tool" id="cap-clear" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 3 7 7-11 11H6l-4-4L14 3Z M8 10l7 7 M10 21h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> <span data-t="cap.clear">Clear all colours</span></button>
+      </div>
     </div>
 
-    <p class="cap-colour" id="cap-colour"><b></b><span></span></p>
-    <p class="small muted center" id="cap-hint"></p>
     <p class="small warn-line center" id="cap-msg" hidden></p>
 
     <div class="row center">
       <button class="btn go" id="cap-solve" data-t="cap.solve">Solve it ▶</button>
-      <button class="linkish" id="cap-restart" data-t="cap.restart">Start again</button>
     </div>
   </section>
 
@@ -134,10 +133,10 @@
   </p>
 </div>
 
-<script src="lang.js?v=20261121d"></script>
+<script src="lang.js?v=20261121l"></script>
 <script src="solver.js?v=20261121d"></script>
-<script src="cubeview.js?v=20261121e"></script>
+<script src="cubeview.js?v=20261121p"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261121d"></script>
+<script src="app.js?v=20261121l"></script>
 </body>
 </html>

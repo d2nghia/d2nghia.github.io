@@ -107,9 +107,6 @@
   function setBrush(colour) {
     var pencil = pencilCursor(colour);
     $('cap-cube').style.cursor = pencil;
-    var read = $('cap-colour');
-    read.firstElementChild.style.background = HEX[colour];
-    read.lastElementChild.textContent = t('cap.painting', { colour: LANG.colour(colour) });
   }
 
   function paintModel() {
@@ -167,8 +164,6 @@
     }
     if (!capPalette) capPalette = makePalette($('cap-palette'), setBrush, 'white');
     setBrush(capPalette.get());
-    $('cap-hint').textContent = t(window.matchMedia('(pointer: coarse)').matches
-      ? 'cap.hint.touch' : 'cap.hint.mouse');
     paintModel();
     var done = 6 - facesLeft();
     if (!fresh && done) {
@@ -449,9 +444,16 @@
   function trySolve() {
     var left = facesLeft();
     if (left > 0) {
+      // The camera still sees the previous physical side while the model turns.
+      stopCamera();
+      capView.showMissing();
       $('cap-msg').hidden = false;
       $('cap-msg').className = 'small warn-line center';
-      $('cap-msg').textContent = left === 1 ? t('cap.left.one') : t('cap.left.many', { n: left });
+      $('cap-msg').textContent = t('cap.missing');
+      $('cap-cube').scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'center'
+      });
       return;
     }
     stopCamera();
@@ -766,14 +768,14 @@
   LANG.apply(document);
   $('lang-switch').onclick = function () { LANG.toggle(); };
   LANG.onChange(function () {
-    if (!$('screen-capture').hidden) { setBrush(capPalette.get()); renderCaptureStep(); }
+    if (!$('screen-capture').hidden) setBrush(capPalette.get());
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
     if (!$('screen-done').hidden && session) finish();
   });
   $('go-camera').onclick = function () { startCapture(false); };
   $('go-manual').onclick = function () { startManual(); };
   $('net-redo').onclick = function () { startCapture(false); };
-  $('cap-restart').onclick = function () { startCapture(true); };
+  $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
   $('cap-solve').onclick = trySolve;
   $('go-demo').onclick = startDemo;
   $('net-solve').onclick = assemble;

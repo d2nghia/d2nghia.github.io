@@ -23,8 +23,8 @@
   var FACELET_AT = {};
   L.FACELETS.forEach(function (f, i) { FACELET_AT[f.pos.join(',') + '|' + f.face] = i; });
 
-  function faceTransform(f) {
-    var h = S / 2;
+  function faceTransform(f, distance) {
+    var h = distance == null ? S / 2 : distance;
     if (f === 'F') return 'translateZ(' + h + 'px)';
     if (f === 'B') return 'rotateY(180deg) translateZ(' + h + 'px)';
     if (f === 'R') return 'rotateY(90deg) translateZ(' + h + 'px)';
@@ -93,10 +93,102 @@
     // The whole mat accepts drags; the smaller stage still controls cube sizing.
     var surface = host.closest('.cap-model, .mat') || host;
     var built = build(host), state = L.solvedState(), busy = false;
+    // One glow plane per side lets the focus fade between faces as we spin.
+    // These follow the cube in 3D and never intercept sticker painting or dragging.
+    var lights = {};
+    ['U', 'D', 'R', 'L', 'F', 'B'].forEach(function (f) {
+      var light = document.createElement('div');
+      light.className = 'face-light';
+      light.setAttribute('aria-hidden', 'true');
+      light.style.transform = faceTransform(f, CUBE / 2 + 1);
+      built.cube.appendChild(light);
+      lights[f] = light;
+    });
     var names = null;          // when set, the cube is drawn from colour names instead
     var focusFace = null;      // the side the camera will write onto
     var onView = null;
     var view = { rx: -22, ry: -32 };
+    var hintFace = null, hintTimer = 0;
+
+    function clearHints() {
+      clearTimeout(hintTimer);
+      hintTimer = 0;
+      hintFace = null;
+      built.cubies.forEach(function (c) {
+        Object.keys(c.faces).forEach(function (f) { c.faces[f].classList.remove('needs-colour'); });
+      });
+      built.cube.querySelectorAll('.missing-pointer').forEach(function (el) { el.remove(); });
+    }
+
+    function markMissing(el, active) {
+      el.classList.toggle('needs-colour', active);
+      var pointer = el.querySelector('.missing-pointer');
+      if (!active) { if (pointer) pointer.remove(); return; }
+      if (pointer) return;
+      pointer = document.createElement('div');
+      pointer.className = 'missing-pointer';
+      pointer.setAttribute('aria-hidden', 'true');
+      function plane(kind, transform, colour) {
+        var side = document.createElement('span');
+        side.className = 'pointer-' + kind;
+        side.style.transform = transform;
+        side.style.background = colour;
+        pointer.appendChild(side);
+      }
+      // The tip sits just above the sticker; the shaft extends out along its
+      // normal. Each flat polygon remains in the cube's shared 3D scene.
+      ['#f04444', '#b6192b', '#d52636', '#ff7770'].forEach(function (colour, i) {
+        var turn = 'rotateZ(' + (i * 90) + 'deg) ';
+        plane('head', turn + 'translate3d(-9px,0,2px) rotateX(90deg)', colour);
+        plane('shaft', turn + 'translate3d(-2px,-2px,22px) rotateX(90deg)', colour);
+      });
+      plane('cap', 'translate3d(-2px,-2px,44px)', '#ffaaa1');
+      el.appendChild(pointer);
+    }
+
+    // Equivalent views keep the turn short even after the child has rolled the
+    // cube upside down or spun it through several full revolutions.
+    function facingAngles(face) {
+      function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
+      var candidates;
+      if (face === 'U' || face === 'D') {
+        candidates = [{ rx: near(face === 'U' ? -56 : 56, view.rx), ry: view.ry }];
+      } else {
+        var y = { F: 0, R: -90, B: 180, L: 90 }[face];
+        candidates = [
+          { rx: near(-24, view.rx), ry: near(y - 28, view.ry) },
+          { rx: near(156, view.rx), ry: near(y + 208, view.ry) }
+        ];
+      }
+      candidates.forEach(function (a) { a.distance = Math.pow(a.rx - view.rx, 2) + Math.pow(a.ry - view.ry, 2); });
+      return candidates.sort(function (a, b) { return a.distance - b.distance; })[0];
+    }
+
+    function look(rx, ry, smooth) {
+      built.cube.style.transition = smooth ? 'transform .55s cubic-bezier(.4,0,.2,1)' : 'none';
+      view.rx = rx; view.ry = ry;
+      applyView();
+    }
+
+    function showMissing() {
+      clearHints();
+      if (!names) return;
+      var missing = L.FACE_ORDER.filter(function (f, i) {
+        return names.slice(i * 9, i * 9 + 9).some(function (n) { return !n; });
+      }).map(function (f) { return { face: f, angles: facingAngles(f) }; });
+      if (!missing.length) return;
+      missing.sort(function (a, b) {
+        return Number(b.face === focusFace) - Number(a.face === focusFace) || a.angles.distance - b.angles.distance;
+      });
+      var next = missing[0];
+      // Restart the brief cue when Solve is pressed again before it has faded.
+      void built.cube.offsetWidth;
+      hintFace = next.face;
+      look(next.angles.rx, next.angles.ry, true);
+      repaint(null);
+      // Let the .55s turn settle, then show exactly two .85s pulses.
+      hintTimer = setTimeout(clearHints, 2250);
+    }
 
     function applyView() {
       built.cube.style.transform = 'rotateX(' + view.rx + 'deg) rotateY(' + view.ry + 'deg)';
@@ -111,8 +203,9 @@
           if (idx == null) { el.style.background = DEAD; el.style.boxShadow = 'none'; return; }
           var n = names[idx];
           el.style.background = n ? HEX[n] : UNSEEN;
-          el.style.boxShadow = f === focusFace ? 'inset 0 0 0 4px #27e0f5'
-            : n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
+          el.style.boxShadow = n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
+          el.classList.toggle('is-focused', f === focusFace);
+          markMissing(el, !n && f === hintFace);
         });
       });
     }
@@ -121,6 +214,11 @@
       built.cube.style.scale = Math.max(0.7, Math.min(1.7, w / 230));
     }
     function repaint(highlight) {
+      var litFace = names ? focusFace : null;
+      built.cube.classList.toggle('has-focus', !!litFace);
+      Object.keys(lights).forEach(function (f) {
+        lights[f].classList.toggle('is-lit', f === litFace);
+      });
       if (names) paintByName();
       else paint(built.cubies, state, faceColour, { highlight: highlight });
     }
@@ -224,7 +322,8 @@
       play: play,
       busy: function () { return busy; },
       colours: function (fc) { faceColour = fc; repaint(null); },
-      setNames: function (arr) { names = arr; repaint(null); },
+      setNames: function (arr) { if (arr !== names) clearHints(); names = arr; repaint(null); },
+      showMissing: showMissing,
       onSticker: function (cb) { onSticker = cb; },
       onView: function (cb) { onView = cb; cb(view.rx, view.ry); },
       flash: function () {
@@ -238,11 +337,7 @@
         repaint(null);
       },
       angles: function () { return { rx: view.rx, ry: view.ry }; },
-      look: function (rx, ry, smooth) {
-        built.cube.style.transition = smooth ? 'transform .55s cubic-bezier(.4,0,.2,1)' : 'none';
-        view.rx = rx; view.ry = ry;
-        applyView();
-      }
+      look: look
     };
   }
 

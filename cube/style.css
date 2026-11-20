@@ -132,8 +132,6 @@ button { font-family: var(--font-body); }
   background: var(--card); border: 1px solid var(--line); border-radius: 26px; padding: 9px 14px;
   width: auto; margin-inline: auto;
 }
-.tool-sep { width: 1px; height: 30px; background: var(--line); flex: 0 0 auto; }
-@media (max-width: 600px) { .tool-sep { display: none; } }
 .btn.tool {
   display: inline-flex; align-items: center; gap: 8px; font-size: .95rem;
   padding: 11px 16px; border-radius: 999px; box-shadow: 0 3px 0 rgba(0, 0, 0, .2);
@@ -149,11 +147,6 @@ button { font-family: var(--font-body); }
 }
 .warn-line { color: var(--warn); font-weight: 700; }
 .kept-line { color: var(--good); font-weight: 700; }
-.cap-colour {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: var(--font-display); font-weight: 700; font-size: .95rem; color: var(--ink);
-}
-.cap-colour b { width: 18px; height: 18px; border-radius: 5px; border: 2px solid rgba(0, 0, 0, .35); display: block; }
 
 /* the camera, tucked into the corner of the cube's mat */
 .cap-model { position: relative; }
@@ -236,11 +229,62 @@ button { font-family: var(--font-body); }
   display: grid; place-items: center; perspective: 900px; touch-action: none; cursor: grab;
 }
 .cap-model, .mat { touch-action: none; cursor: grab; }
-.cube { position: relative; width: 132px; height: 132px; transform-style: preserve-3d; }
-.cubie { position: absolute; width: 44px; height: 44px; left: 44px; top: 44px; transform-style: preserve-3d; }
+.cube { position: relative; width: 132px; height: 132px; transform-style: preserve-3d; pointer-events: none; }
+.cubie { position: absolute; width: 44px; height: 44px; left: 44px; top: 44px; transform-style: preserve-3d; pointer-events: none; }
 .sticker {
   position: absolute; width: 44px; height: 44px; background: #15181f;
   border: 2px solid #0d1016; border-radius: 7px; backface-visibility: hidden;
+}
+/* Only visible stickers take clicks; empty 3D containers must not cover controls. */
+.sticker[data-facelet] { pointer-events: auto; }
+/* Contrast and a soft rim single out the face without recolouring its stickers. */
+.cube .sticker[data-facelet]::after {
+  content: ''; position: absolute; inset: 0; border-radius: 5px;
+  background: #080c18; opacity: 0; pointer-events: none;
+  transition: opacity .28s ease;
+}
+.cube.has-focus .sticker[data-facelet]::after { opacity: .36; }
+.cube.has-focus .sticker.is-focused::after { opacity: 0; }
+.face-light {
+  position: absolute; inset: 0; border-radius: 9px;
+  border: 1px solid rgba(255, 225, 160, .9);
+  box-shadow: 0 0 0 1px rgba(12, 15, 24, .85), 0 0 10px 2px rgba(255, 235, 183, .45),
+    0 0 22px 4px rgba(255, 236, 190, .14);
+  backface-visibility: hidden; pointer-events: none; opacity: 0;
+  transition: opacity .28s ease;
+}
+.face-light.is-lit { opacity: 1; }
+.sticker.needs-colour { transform-style: preserve-3d; }
+.sticker.needs-colour::before {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 18px; height: 12px;
+  transform: translate(-50%, -50%) translateZ(1px); pointer-events: none;
+  background: radial-gradient(ellipse, rgba(8, 12, 24, .5), transparent 70%);
+  animation: missing-shadow .85s ease-in-out .55s 2 both;
+}
+.missing-pointer {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  transform-style: preserve-3d; pointer-events: none;
+  animation: missing-pulse .85s ease-in-out .55s 2 both;
+}
+.missing-pointer > span {
+  position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none;
+  animation: missing-blink .85s ease-in-out .55s 2 both;
+}
+.pointer-head { width: 18px; height: 20px; clip-path: polygon(50% 0, 100% 100%, 0 100%); backface-visibility: hidden; }
+.pointer-shaft { width: 4px; height: 22px; }
+.pointer-cap { width: 4px; height: 4px; }
+@keyframes missing-pulse {
+  0%, 100% { transform: translateZ(2px); }
+  50% { transform: translateZ(16px); }
+}
+@keyframes missing-shadow {
+  0%, 12%, 88%, 100% { opacity: 0; }
+  28%, 72% { opacity: .55; }
+  50% { opacity: .3; }
+}
+@keyframes missing-blink {
+  0%, 12%, 88%, 100% { opacity: 0; }
+  28%, 72% { opacity: 1; }
 }
 .turn-word {
   font-family: var(--font-display); font-weight: 800; color: #fff; font-size: 1.25rem;
@@ -274,6 +318,8 @@ button { font-family: var(--font-body); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001s !important; transition: none !important; }
+  /* These brief guidance arrows are explicitly meant to move and blink. */
+  .missing-pointer, .missing-pointer > span, .sticker.needs-colour::before { animation-duration: .85s !important; }
 }
 
 /* ================= step guide ================= */
