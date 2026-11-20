@@ -82,7 +82,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [] };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -152,6 +152,8 @@
     var a = capView.angles();
     cam.place = K.placement(a.rx, a.ry);              // the side showing when the popup opened
     cam.cells = new Array(9).fill(null);
+    cam.found = null;
+    cam.history = [];
     $('cam-modal').hidden = false;
     resetCameraPopup();
     setCaptured(false);
@@ -319,51 +321,17 @@
   }
   window.addEventListener('resize', function () { if (!$('cam-modal').hidden) placeGuide(); });
 
-  /** One small square, ignoring its darkest and brightest quarter. */
-  function spotColour(ctx, x, y, size) {
-    var data = ctx.getImageData(x, y, size, size).data;
-    var px = [];
-    for (var i = 0; i < data.length; i += 4) {
-      px.push([data[i], data[i + 1], data[i + 2],
-        data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114]);
-    }
-    px.sort(function (a, b) { return a[3] - b[3]; });
-    var lo = Math.floor(px.length * 0.25), hi = Math.ceil(px.length * 0.75);
-    var r = 0, g = 0, b = 0, n = 0;
-    for (var j = lo; j < hi; j++) { r += px[j][0]; g += px[j][1]; b += px[j][2]; n++; }
-    return n ? { r: r / n, g: g / n, b: b / n } : { r: 0, g: 0, b: 0 };
-  }
-  function median(values) {
-    var v = values.slice().sort(function (a, b) { return a - b; });
-    return v[(v.length - 1) >> 1];
-  }
-  /**
-   * The colour of one sticker, taken as the middle of five spots spread across
-   * it. A reflection or a shadow usually spoils one or two of them, and the
-   * middle value ignores those; a single reading in the centre does not.
-   */
-  function patchColour(ctx, cx, cy) {
-    var off = 7, size = 10, spots = [];
-    [[0, 0], [-off, -off], [off, -off], [-off, off], [off, off]].forEach(function (d) {
-      spots.push(spotColour(ctx, cx + d[0] - size / 2, cy + d[1] - size / 2, size));
-    });
-    var mid = {
-      r: median(spots.map(function (s) { return s.r; })),
-      g: median(spots.map(function (s) { return s.g; })),
-      b: median(spots.map(function (s) { return s.b; }))
-    };
-    /* If the spots cannot agree, the square is probably not sitting on one
-     * sticker. Better to leave the cell grey than to write a colour that was
-     * never there. */
-    var agree = spots.filter(function (s) {
-      var dr = s.r - mid.r, dg = s.g - mid.g, db = s.b - mid.b;
-      return Math.sqrt(dr * dr + dg * dg + db * db) < 72;
-    }).length;
-    mid.sure = agree >= 3;
-    return mid;
-  }
+  var REGION = 180;              // the search picture, in pixels
+  var SPREAD = 1.45;             // how far outside the square to look for the cube
 
-  /** Read the nine stickers inside the guide square out of the current frame. */
+  /**
+   * Look for the cube in the picture and read it.
+   *
+   * The square on screen is a hint, not a frame: a child holding the cube a
+   * little too far away or off to one side would otherwise have the colours
+   * read off the background. So a patch wider than the square is searched for
+   * something that looks like a face.
+   */
   function sampleFrame() {
     var video = $('cam'), wrap = $('cam-wrap');
     if (!video.videoWidth) return;
@@ -371,22 +339,63 @@
     var w = wrap.clientWidth, h = wrap.clientHeight;
     var scale = Math.max(w / vw, h / vh);                 // object-fit: cover
     var offX = (w - vw * scale) / 2, offY = (h - vh * scale) / 2;
-    var size = Math.round(Math.min(w, h) * 0.72);
-    var gx = (w - size) / 2, gy = (h - size) / 2;
-    var fx = (gx - offX) / scale, fy = (gy - offY) / scale, fs = size / scale;
+    var guide = Math.round(Math.min(w, h) * 0.72);
+    var region = guide * SPREAD;
+
+    var fs = region / scale;                              // the patch, in the frame's own pixels
+    fs = Math.min(fs, vw, vh);
+    var fx = (w - region) / 2, fy = (h - region) / 2;
+    fx = (fx - offX) / scale; fy = (fy - offY) / scale;
+    fx = Math.max(0, Math.min(vw - fs, fx));
+    fy = Math.max(0, Math.min(vh - fs, fy));
 
     var canvas = cam.canvas || (cam.canvas = document.createElement('canvas'));
-    canvas.width = canvas.height = 150;
+    canvas.width = canvas.height = REGION;
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(video, fx, fy, fs, fs, 0, 0, 150, 150);
-    var patches = [];
-    for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
-      patches.push(patchColour(ctx, c * 50 + 25, r * 50 + 25));
+    ctx.drawImage(video, fx, fy, fs, fs, 0, 0, REGION, REGION);
+
+    var found = K.readFace(ctx.getImageData(0, 0, REGION, REGION).data, REGION, REGION / SPREAD / 3);
+    cam.view = { fx: fx, fy: fy, fs: fs, scale: scale, offX: offX, offY: offY };
+    cam.found = found && found.score > 20 ? found : null;
+    if (cam.found) {
+      cam.history.push({ patches: cam.found.patches, sure: cam.found.sure });
+      if (cam.history.length > 5) cam.history.shift();
+    } else {
+      cam.history.length = 0;
     }
-    var named = K.classifyFace(patches);
-    cam.cells = named.map(function (n, i) { return patches[i].sure ? n : null; });
+    cam.cells = cam.found ? cam.found.names : new Array(9).fill(null);
+    drawFoundGrid();
     renderCamGrid();
+    if (cam.live) {
+      $('cam-status').textContent = cam.found
+        ? 'Got it. Press Capture when the colours below look right.'
+        : 'Hold a side of the cube in the square.';
+    }
   }
+
+  /** Draw the grid that was actually found, so the child can see it lock on. */
+  function drawFoundGrid() {
+    var wrap = $('cam-wrap'), canvas = $('cam-overlay');
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    if (!cam.found || !cam.view) return;
+    var v = cam.view, f = cam.found;
+    function toScreen(px, py) {
+      return [(v.fx + px * v.fs / REGION) * v.scale + v.offX,
+      (v.fy + py * v.fs / REGION) * v.scale + v.offY];
+    }
+    var step = toScreen(f.cell, 0)[0] - toScreen(0, 0)[0];
+    ctx.lineWidth = 3;
+    for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
+      var p = toScreen(f.x + (c - 1) * f.cell, f.y + (r - 1) * f.cell);
+      var side = step * 0.74;
+      ctx.strokeStyle = f.names[r * 3 + c] ? 'rgba(39,224,245,.95)' : 'rgba(255,255,255,.6)';
+      ctx.strokeRect(p[0] - side / 2, p[1] - side / 2, side, side);
+    }
+  }
+  window.addEventListener('resize', function () { if (!$('cam-modal').hidden) drawFoundGrid(); });
 
   var camGrid = null;
   function renderCamGrid() {
@@ -408,7 +417,7 @@
     $('cam-shot').hidden = !on;
     if (on) {
       $('cam').pause();
-      if (cam.canvas) $('cam-shot').src = cam.canvas.toDataURL('image/jpeg', 0.75);
+      $('cam-shot').src = faceThumbnail();
       var unsure = cam.cells.filter(function (c) { return !c; }).length;
       $('cam-status').textContent = unsure
         ? (unsure === 1 ? 'One square was not clear — tap a colour onto the grey one, or take it again.'
@@ -416,9 +425,29 @@
         : 'Any sticker wrong? Pick a colour and tap it, then Accept.';
     }
   }
+  /** The square the reading came from, cut out for checking against the colours. */
+  function faceThumbnail() {
+    if (!cam.canvas) return '';
+    if (!cam.found) return cam.canvas.toDataURL('image/jpeg', 0.75);
+    var f = cam.found, side = f.cell * 3.1;
+    var out = document.createElement('canvas');
+    out.width = out.height = 120;
+    out.getContext('2d').drawImage(cam.canvas, f.x - side / 2, f.y - side / 2, side, side, 0, 0, 120, 120);
+    return out.toDataURL('image/jpeg', 0.8);
+  }
+
   function doCapture() {
     if ($('cam-accept').disabled) {
       sampleFrame();
+      if (!cam.found) {
+        $('cam-status').textContent = 'I cannot see a side of the cube yet. Hold it in the square and try again.';
+        return;
+      }
+      if (cam.history.length > 1) {
+        cam.cells = K.settle(cam.history.map(function (h) { return h.patches; }),
+          cam.history.map(function (h) { return h.sure; }));
+        renderCamGrid();
+      }
       setCaptured(true);
     } else {
       $('cam').play().catch(function () { });

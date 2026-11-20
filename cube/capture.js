@@ -172,10 +172,162 @@
     });
   }
 
+  /* ---------------- finding the face in the picture ----------------
+   * Asking a child to line a cube up inside a square is a deal they lose: a
+   * little too far away, a little off to one side, and the reading squares sit
+   * on the background. So instead of trusting where the square is, the page
+   * looks for the face: it tries many positions and sizes of a 3x3 grid and
+   * keeps the one that lands on nine flat patches of colour separated by the
+   * cube's dark lines.
+   */
+
+  /** Running totals, so the average and the variation of any box cost the same. */
+  function buildSums(data, W) {
+    var n = (W + 1) * (W + 1);
+    var R = new Float64Array(n), G = new Float64Array(n), B = new Float64Array(n);
+    var L = new Float64Array(n), Q = new Float64Array(n);
+    for (var y = 0; y < W; y++) {
+      var rr = 0, rg = 0, rb = 0, rl = 0, rq = 0;
+      for (var x = 0; x < W; x++) {
+        var i = (y * W + x) * 4;
+        var r = data[i], g = data[i + 1], b = data[i + 2];
+        var l = r * 0.299 + g * 0.587 + b * 0.114;
+        rr += r; rg += g; rb += b; rl += l; rq += l * l;
+        var k = (y + 1) * (W + 1) + (x + 1), up = y * (W + 1) + (x + 1);
+        R[k] = R[up] + rr; G[k] = G[up] + rg; B[k] = B[up] + rb;
+        L[k] = L[up] + rl; Q[k] = Q[up] + rq;
+      }
+    }
+    return { R: R, G: G, B: B, L: L, Q: Q, W: W, S: W + 1 };
+  }
+  function boxStats(sums, cx, cy, w, h) {
+    var W = sums.W, S = sums.S;
+    var x0 = Math.max(0, Math.min(W - 1, Math.round(cx - w / 2)));
+    var y0 = Math.max(0, Math.min(W - 1, Math.round(cy - h / 2)));
+    var x1 = Math.max(x0 + 1, Math.min(W, Math.round(cx + w / 2)));
+    var y1 = Math.max(y0 + 1, Math.min(W, Math.round(cy + h / 2)));
+    var n = (x1 - x0) * (y1 - y0);
+    function sum(A) { return A[y1 * S + x1] - A[y0 * S + x1] - A[y1 * S + x0] + A[y0 * S + x0]; }
+    var l = sum(sums.L) / n, q = sum(sums.Q) / n;
+    return {
+      r: sum(sums.R) / n, g: sum(sums.G) / n, b: sum(sums.B) / n,
+      l: l, sd: Math.sqrt(Math.max(0, q - l * l)), n: n
+    };
+  }
+
+  /** How much a 3x3 grid at this position and size looks like a cube face. */
+  function gridScore(sums, x0, y0, cell) {
+    var W = sums.W;
+    var half = cell * 1.5;
+    if (x0 - half < 1 || y0 - half < 1 || x0 + half > W - 1 || y0 + half > W - 1) return null;
+    var inner = cell * 0.56, lums = [], flat = 0, i, r, c;
+    for (r = 0; r < 3; r++) for (c = 0; c < 3; c++) {
+      var st = boxStats(sums, x0 + (c - 1) * cell, y0 + (r - 1) * cell, inner, inner);
+      lums.push(st.l);
+      flat += st.sd;                                  // a sticker is flat; an edge or a gap is not
+    }
+    var gaps = 0, lines = 0;
+    for (r = 0; r < 3; r++) for (c = 0; c < 2; c++) {
+      var gx = boxStats(sums, x0 + (c - 0.5) * cell, y0 + (r - 1) * cell, cell * 0.16, cell * 0.5);
+      gaps += Math.max(0, (lums[r * 3 + c] + lums[r * 3 + c + 1]) / 2 - gx.l);
+      lines++;
+    }
+    for (r = 0; r < 2; r++) for (c = 0; c < 3; c++) {
+      var gy = boxStats(sums, x0 + (c - 1) * cell, y0 + (r - 0.5) * cell, cell * 0.5, cell * 0.16);
+      gaps += Math.max(0, (lums[r * 3 + c] + lums[(r + 1) * 3 + c] ) / 2 - gy.l);
+      lines++;
+    }
+    return (gaps / lines) - 0.75 * (flat / 9);
+  }
+
+  /**
+   * Find the face and read its nine colours.
+   * @param {Uint8ClampedArray} data RGBA pixels of a square region, row by row
+   * @param {number} W the region's width in pixels
+   * @param {number} nominal the cell size to expect, in the same pixels
+   * @returns {{names:(string|null)[], sure:boolean[], x:number, y:number, cell:number, score:number}|null}
+   */
+  function readFace(data, W, nominal) {
+    var sums = buildSums(data, W);
+    var best = null, si, dx, dy;
+    var scales = [0.62, 0.72, 0.84, 0.96, 1.08, 1.2, 1.34];
+    for (si = 0; si < scales.length; si++) {
+      var cell = nominal * scales[si];
+      var step = cell * 0.14;
+      for (dy = -4; dy <= 4; dy++) for (dx = -4; dx <= 4; dx++) {
+        var x = W / 2 + dx * step, y = W / 2 + dy * step;
+        var score = gridScore(sums, x, y, cell);
+        if (score == null) continue;
+        if (!best || score > best.score) best = { score: score, x: x, y: y, cell: cell };
+      }
+    }
+    if (!best) return null;
+
+    /* Read each sticker from five spots and take the middle one, so a
+     * reflection or a shadow on part of it does not decide the answer. */
+    var off = best.cell * 0.22, spot = best.cell * 0.2;
+    var patches = [], sure = [];
+    for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
+      var cx = best.x + (c - 1) * best.cell, cy = best.y + (r - 1) * best.cell;
+      var reads = [[0, 0], [-off, -off], [off, -off], [-off, off], [off, off]].map(function (d) {
+        return boxStats(sums, cx + d[0], cy + d[1], spot, spot);
+      });
+      var mid = {
+        r: middle(reads.map(function (p) { return p.r; })),
+        g: middle(reads.map(function (p) { return p.g; })),
+        b: middle(reads.map(function (p) { return p.b; }))
+      };
+      var agree = reads.filter(function (p) {
+        var dr = p.r - mid.r, dg = p.g - mid.g, db = p.b - mid.b;
+        return Math.sqrt(dr * dr + dg * dg + db * db) < 72;
+      }).length;
+      /* A sticker lit flat reads the same all over. A reflection sitting on it
+       * is a bright patch fading outwards, and no reading can say what colour
+       * is underneath, so it is better to admit that than to invent one. */
+      var lums = reads.map(function (p) { return p.l; });
+      var spread = Math.max.apply(null, lums) - Math.min.apply(null, lums);
+      patches.push(mid);
+      sure.push(agree >= 3 && spread < 55);
+    }
+    var names = classifyFace(patches);
+    return {
+      names: names.map(function (n, i) { return sure[i] ? n : null; }),
+      patches: patches, sure: sure,
+      x: best.x, y: best.y, cell: best.cell, score: best.score
+    };
+  }
+  /**
+   * Settle a reading over several frames. A reflection slides across the cube
+   * as the hand moves while the stickers stay put, so the middle value of a few
+   * frames is steadier than any one of them.
+   * @param {{r,g,b}[][]} frames each frame's nine colours
+   * @param {boolean[][]} sureFlags each frame's nine confidence flags
+   */
+  function settle(frames, sureFlags) {
+    var patches = [], sure = [];
+    for (var i = 0; i < 9; i++) {
+      patches.push({
+        r: middle(frames.map(function (f) { return f[i].r; })),
+        g: middle(frames.map(function (f) { return f[i].g; })),
+        b: middle(frames.map(function (f) { return f[i].b; }))
+      });
+      var yes = sureFlags.filter(function (f) { return f[i]; }).length;
+      sure.push(yes * 2 > frames.length);
+    }
+    var names = classifyFace(patches);
+    return names.map(function (n, i) { return sure[i] ? n : null; });
+  }
+
+  function middle(values) {
+    var v = values.slice().sort(function (a, b) { return a - b; });
+    return v[(v.length - 1) >> 1];
+  }
+
   return {
     OPP: OPP, CANON: CANON, NORMAL: NORMAL,
     frameFromView: frameFromView, placement: placement,
     readRotations: readRotations, rotateGrid: rotateGrid,
-    classify: classify, classifyFace: classifyFace, toHsv: toHsv
+    classify: classify, classifyFace: classifyFace, toHsv: toHsv,
+    readFace: readFace, settle: settle, buildSums: buildSums, boxStats: boxStats
   };
 });

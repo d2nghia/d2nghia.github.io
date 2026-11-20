@@ -150,6 +150,94 @@ const together = K.classifyFace(warmMixed);
 check('judging the nine together beats one at a time',
   together.join(',') === MIXED.join(',') , 'together=' + together.join(',') + ' oneByOne=' + oneByOne.join(','));
 
+/* finding the face in a photograph, which is the part a child cannot do for us */
+function drawPhoto(W, opts) {
+  const o = Object.assign({
+    face: ['yellow', 'blue', 'orange', 'white', 'yellow', 'orange', 'green', 'blue', 'white'],
+    cell: W / 4.2, dx: 0, dy: 0, gain: [1, 1, 1], scale: 1, lift: 0, glare: null, noise: 6
+  }, opts || {});
+  const data = new Uint8ClampedArray(W * W * 4);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  function put(x, y, rgb) {
+    if (x < 0 || y < 0 || x >= W || y >= W) return;
+    const i = (y * W + x) * 4;
+    data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255;
+  }
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    let v = 232 + rnd() * 12;
+    if ((x + y) % 97 < 14 && x < W * 0.4) v = 150 + rnd() * 40;     // a drawing on the table
+    if (x > W * 0.78 && y < W * 0.5) v = 205 + rnd() * 20;          // a hand
+    put(x, y, [v, v * 0.97, v * 0.93]);
+  }
+  const cx = W / 2 + o.dx, cy = W / 2 + o.dy, cell = o.cell;
+  for (let y = Math.round(cy - cell * 1.5); y < cy + cell * 1.5; y++) {
+    for (let x = Math.round(cx - cell * 1.5); x < cx + cell * 1.5; x++) put(x, y, [18, 18, 20]);
+  }
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const base = CUBE_RGB[o.face[r * 3 + c]];
+    const col = [0, 1, 2].map(i => Math.min(255, base[i] * o.gain[i] * o.scale + o.lift));
+    const sx = cx + (c - 1.5) * cell, sy = cy + (r - 1.5) * cell;
+    for (let y = Math.round(sy + cell * 0.1); y < sy + cell * 0.9; y++) {
+      for (let x = Math.round(sx + cell * 0.1); x < sx + cell * 0.9; x++) {
+        put(x, y, col.map(v => Math.max(0, Math.min(255, v + (rnd() - 0.5) * o.noise))));
+      }
+    }
+  }
+  if (o.glare) {
+    const gx = cx + o.glare[0] * cell, gy = cy + o.glare[1] * cell, gr = o.glare[2] * cell;
+    for (let y = Math.round(gy - gr); y < gy + gr; y++) for (let x = Math.round(gx - gr); x < gx + gr; x++) {
+      const d = Math.hypot(x - gx, y - gy);
+      if (d > gr || x < 0 || y < 0 || x >= W || y >= W) continue;
+      const i = (y * W + x) * 4, k = 0.85 * (1 - d / gr);
+      data[i] += (255 - data[i]) * k; data[i + 1] += (255 - data[i + 1]) * k; data[i + 2] += (255 - data[i + 2]) * k;
+    }
+  }
+  return data;
+}
+
+const PHOTO = 180, NOMINAL = PHOTO / 4.2;
+const PHOTO_FACE = ['yellow', 'blue', 'orange', 'white', 'yellow', 'orange', 'green', 'blue', 'white'];
+function photoReads(label, opts) {
+  const got = K.readFace(drawPhoto(PHOTO, Object.assign({ face: PHOTO_FACE }, opts)), PHOTO, NOMINAL);
+  if (!got) { check('a photo with the cube ' + label, false, 'found no face at all'); return; }
+  const wrong = got.names.filter((n, i) => n && n !== PHOTO_FACE[i]).length;
+  const unsure = got.names.filter(n => !n).length;
+  check('a photo with the cube ' + label, wrong === 0 && unsure === 0,
+    'wrong=' + wrong + ' unsure=' + unsure + ' got ' + got.names.join(','));
+}
+
+photoReads('filling the square', {});
+photoReads('off to one side', { dx: 16 });
+photoReads('off and up', { dx: -14, dy: -12 });
+photoReads('held too far away', { cell: PHOTO / 6 });
+photoReads('far away and off to one side', { cell: PHOTO / 5.6, dx: 14, dy: -10 });
+photoReads('held too close', { cell: PHOTO / 3.4 });
+photoReads('under a warm bulb', { gain: [1.15, 1.03, 0.78] });
+photoReads('under a very warm bulb', { gain: [1.32, 1.0, 0.62] });
+photoReads('in a dim room', { scale: 0.5 });
+photoReads('in washed-out light', { scale: 0.75, lift: 35 });
+photoReads('with a reflection on the middle', { glare: [0, 0, 0.55] });
+photoReads('with a reflection on a corner', { glare: [-1, -1, 0.5] });
+photoReads('far away, warm, with a reflection', { cell: PHOTO / 5.6, dx: 10, gain: [1.15, 1.03, 0.78], glare: [1, 0, 0.45] });
+
+/* and it must not invent a face where there is none */
+function emptyScene(kind) {
+  const data = new Uint8ClampedArray(PHOTO * PHOTO * 4);
+  let seed = 3;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < PHOTO * PHOTO; i++) {
+    const v = kind === 'paper' ? 230 + rnd() * 14 : kind === 'hand' ? 180 + rnd() * 30 : rnd() * 255;
+    data[i * 4] = v; data[i * 4 + 1] = v * 0.95; data[i * 4 + 2] = v * 0.9; data[i * 4 + 3] = 255;
+  }
+  return data;
+}
+['paper', 'hand', 'noise'].forEach(function (kind) {
+  const got = K.readFace(emptyScene(kind), PHOTO, NOMINAL);
+  check('nothing but ' + kind + ' scores too low to be a face', !got || got.score < 20,
+    'score=' + (got ? got.score.toFixed(1) : 'none'));
+});
+
 /* colour reading */
 const SWATCHES = {
   white: [250, 250, 250], yellow: [255, 212, 0], green: [0, 165, 80],
