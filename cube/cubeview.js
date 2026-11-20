@@ -224,6 +224,11 @@
       setNames: function (arr) { names = arr; repaint(null); },
       onSticker: function (cb) { onSticker = cb; },
       onView: function (cb) { onView = cb; cb(view.rx, view.ry); },
+      flash: function () {
+        host.classList.remove('read-flash');
+        void host.offsetWidth;
+        host.classList.add('read-flash');
+      },
       focus: function (face) {
         if (face === focusFace) return;
         focusFace = face;

@@ -84,7 +84,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], held: null, manual: false, gone: 0, candidate: { key: '', cells: null, streak: 0 } };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], gone: 0, on: false, handFixed: {}, candidate: { key: '', cells: null, streak: 0 } };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -107,11 +107,9 @@
   function setBrush(colour) {
     var pencil = pencilCursor(colour);
     $('cap-cube').style.cursor = pencil;
-    $('cam-grid').style.cursor = pencil;
     var read = $('cap-colour');
     read.firstElementChild.style.background = HEX[colour];
     read.lastElementChild.textContent = t('cap.painting', { colour: LANG.colour(colour) });
-    if (cam.palette) cam.palette.set(colour);
   }
 
   function paintModel() {
@@ -156,6 +154,7 @@
       capView.onSticker(function (idx) {
         if (!capPalette) return;
         names[idx] = capPalette.get();
+        cam.handFixed[L.FACE_ORDER[Math.floor(idx / 9)]] = true;
         paintModel();
       });
       /* The side facing the child glows: that is the one the camera writes onto. */
@@ -176,27 +175,32 @@
     }
   }
 
-  /* ================= camera popup ================= */
-  function openCamera() {
-    var a = capView.angles();
-    cam.place = K.placement(a.rx, a.ry);              // the side showing when the popup opened
-    cam.cells = new Array(9).fill(null);
+  /* ================= the camera, in the corner of the cube =================
+   * No separate screen: a small view sits on the cube's mat, and whatever it
+   * reads is painted straight onto the side the cube is showing. Spin to the
+   * next side and hold it up again; that is the whole loop.
+   */
+  function toggleCamera() {
+    if (cam.on) stopCamera(); else startCamera();
+  }
+  function startCamera() {
+    cam.on = true;
     cam.found = null;
     cam.history = [];
-    $('cam-modal').hidden = false;
-    resetCameraPopup();
-    clearHeld();
-    if (!cam.palette) {
-      cam.palette = makePalette($('cam-palette'), function (colour) {
-        capPalette.set(colour);
-        setBrush(colour);
-      }, capPalette.get());
-    }
-    cam.palette.set(capPalette.get());
-    setBrush(capPalette.get());
+    cam.candidate = { key: '', cells: null, streak: 0 };
+    cam.handFixed = {};
+    $('cam-dock').hidden = false;
+    $('cap-msg').hidden = true;
     $('cam-status').textContent = t('cam.starting');
-    placeGuide();
+    $('cap-open-cam').classList.add('on');
     startStream();
+  }
+  function stopCamera() {
+    cam.on = false;
+    stopLive();
+    stopStream();
+    $('cam-dock').hidden = true;
+    $('cap-open-cam').classList.remove('on');
   }
 
   /**
@@ -216,23 +220,15 @@
   }
   function cameraTrouble(err) {
     var name = err && err.name;
-    if (!window.isSecureContext) {
-      return t('cam.err.https');
-    }
+    if (!window.isSecureContext) return t('cam.err.https');
     /* Inside a frame that has not been given the camera, nobody is ever asked —
      * including when the browser reports that as a flat refusal. */
-    if (framed() && frameAllowsCamera() !== true) {
-      return t('cam.err.frame');
-    }
+    if (framed() && frameAllowsCamera() !== true) return t('cam.err.frame');
     if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
       return t('cam.err.none');
     }
-    if (name === 'NotReadableError' || name === 'TrackStartError') {
-      return t('cam.err.busy');
-    }
-    if (name === 'NotAllowedError') {
-      return t(cam.permission === 'denied' ? 'cam.err.off' : 'cam.err.refused');
-    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') return t('cam.err.busy');
+    if (name === 'NotAllowedError') return t(cam.permission === 'denied' ? 'cam.err.off' : 'cam.err.refused');
     return t('cam.err.other');
   }
 
@@ -269,12 +265,11 @@
         return video.play().catch(function () { });
       })
       .then(function () {
-        $('cam-msg').hidden = true;
-        placeGuide();
+        $('cap-msg').hidden = true;
         startLive();
         clearTimeout(cam.waiting);
         /* Permission can be granted and still no picture arrive, which would
-         * otherwise leave a black box and a button that does nothing. */
+         * otherwise leave a black box and nothing happening. */
         cam.waiting = setTimeout(function () {
           if ($('cam').videoWidth) return;
           cameraFailed(t('cam.err.blank'));
@@ -283,33 +278,19 @@
       .catch(function (err) {
         /* If a stream was already handed over, the camera is not the problem —
          * saying "no camera" would send the child hunting for the wrong thing. */
-        if (cam.stream) {
-          cameraFailed(t('cam.err.ours'));
-        } else {
-          cameraFailed(cameraTrouble(err));
-        }
+        cameraFailed(cam.stream ? t('cam.err.ours') : cameraTrouble(err));
       });
   }
-  /** Nothing to capture or correct, so the popup becomes a plain explanation. */
   function cameraFailed(text) {
     clearTimeout(cam.waiting);
     stopLive();
     stopStream();
-    $('cam-msg').hidden = false;
-    $('cam-msg').textContent = text;
-    $('cam-status').textContent = '';
-    $('cam-title').textContent = t('cam.title.trouble');
-    clearHeld();
-    $('cam-guide').hidden = true;
-    $('cam-modal').querySelector('.modal-card').classList.add('trouble');
-    $('cam-cancel').textContent = t('cam.byhand');
-  }
-  function resetCameraPopup() {
-    $('cam-msg').hidden = true;
-    $('cam-guide').hidden = false;
-    $('cam-title').textContent = t('cam.title');
-    $('cam-modal').querySelector('.modal-card').classList.remove('trouble');
-    $('cam-cancel').textContent = t('cam.cancel');
+    cam.on = false;
+    $('cap-open-cam').classList.remove('on');
+    $('cam-dock').hidden = true;
+    $('cap-msg').hidden = false;
+    $('cap-msg').className = 'small warn-line center';
+    $('cap-msg').textContent = text;
   }
   function stopStream() {
     clearTimeout(cam.waiting);
@@ -323,7 +304,7 @@
   function startLive() {
     stopLive();
     cam.live = true;
-    $('cam-status').textContent = t('cam.reading');
+    $('cam-status').textContent = t('cam.show');
     cam.timer = setInterval(sampleFrame, 180);
   }
   function stopLive() {
@@ -332,42 +313,23 @@
     cam.timer = 0;
   }
 
-  function placeGuide() {
-    var wrap = $('cam-wrap'), guide = $('cam-guide');
-    var w = wrap.clientWidth, h = wrap.clientHeight;
-    var size = Math.round(Math.min(w, h) * 0.72);
-    guide.style.width = size + 'px';
-    guide.style.height = size + 'px';
-    guide.style.left = Math.round((w - size) / 2) + 'px';
-    guide.style.top = Math.round((h - size) / 2) + 'px';
-  }
-  window.addEventListener('resize', function () { if (!$('cam-modal').hidden) placeGuide(); });
-
   var REGION = 180;              // the search picture, in pixels
-  var SPREAD = 1.45;             // how far outside the square to look for the cube
+  var SPREAD = 1.45;             // how much of the view to search for the cube
 
-  /**
-   * Look for the cube in the picture and read it.
-   *
-   * The square on screen is a hint, not a frame: a child holding the cube a
-   * little too far away or off to one side would otherwise have the colours
-   * read off the background. So a patch wider than the square is searched for
-   * something that looks like a face.
-   */
+  /** Read the camera, find the face, and paint it onto the side being shown. */
   function sampleFrame() {
     var video = $('cam'), wrap = $('cam-wrap');
     if (!video.videoWidth) return;
     var vw = video.videoWidth, vh = video.videoHeight;
     var w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!w || !h) return;
     var scale = Math.max(w / vw, h / vh);                 // object-fit: cover
     var offX = (w - vw * scale) / 2, offY = (h - vh * scale) / 2;
     var guide = Math.round(Math.min(w, h) * 0.72);
     var region = guide * SPREAD;
 
-    var fs = region / scale;                              // the patch, in the frame's own pixels
-    fs = Math.min(fs, vw, vh);
-    var fx = (w - region) / 2, fy = (h - region) / 2;
-    fx = (fx - offX) / scale; fy = (fy - offY) / scale;
+    var fs = Math.min(region / scale, vw, vh);
+    var fx = ((w - region) / 2 - offX) / scale, fy = ((h - region) / 2 - offY) / scale;
     fx = Math.max(0, Math.min(vw - fs, fx));
     fy = Math.max(0, Math.min(vh - fs, fy));
 
@@ -384,18 +346,13 @@
       if (cam.history.length > 5) cam.history.shift();
     } else {
       cam.history.length = 0;
+      if (++cam.gone > 4) cam.handFixed = {};          // out of view: start afresh next time
     }
-    considerReading(cam.found);
-    if (!cam.held) cam.cells = cam.found ? cam.found.names : new Array(9).fill(null);
     drawFoundGrid();
-    renderCamGrid();
-    if (cam.live) {
-      if (cam.held) sayHeld();
-      else $('cam-status').textContent = t(cam.found ? 'cam.holdstill' : 'cam.show');
-    }
+    considerReading(cam.found);
   }
 
-  /** Draw the grid that was actually found, so the child can see it lock on. */
+  /** Draw the grid that was found, over the little picture. */
   function drawFoundGrid() {
     var wrap = $('cam-wrap'), canvas = $('cam-overlay');
     var w = wrap.clientWidth, h = wrap.clientHeight;
@@ -409,7 +366,7 @@
       (v.fy + py * v.fs / REGION) * v.scale + v.offY];
     }
     var step = toScreen(f.cell, 0)[0] - toScreen(0, 0)[0];
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
       var p = toScreen(f.x + (c - 1) * f.cell, f.y + (r - 1) * f.cell);
       var side = step * 0.74;
@@ -417,121 +374,57 @@
       ctx.strokeRect(p[0] - side / 2, p[1] - side / 2, side, side);
     }
   }
-  window.addEventListener('resize', function () { if (!$('cam-modal').hidden) drawFoundGrid(); });
 
-  var camGrid = null;
-  function renderCamGrid() {
-    if (!camGrid) {
-      camGrid = makeGrid($('cam-grid'),
-        function (i) { return cam.cells[i]; },
-        function (i) {
-          if (!cam.held) return;                     // nothing to correct yet
-          cam.manual = true;
-          cam.cells[i] = cam.palette.get();
-          cam.held.cells[i] = cam.cells[i];
-          sayHeld();
-        });
-    }
-    camGrid.render();
-  }
-
-  /** Capture freezes the picture so the reading can be corrected before it lands. */
   /**
-   * Keep a reading once it settles.
-   *
-   * Holding a cube still with one hand and reaching for a button with the other
-   * is a job a child does not have the hands for. So the page watches until the
-   * same nine colours come back several times over, keeps that reading, and
-   * then the cube can be put down.
+   * Keep a reading only once it settles, then paint it onto the side the cube
+   * is showing. The side is part of what has to settle: spinning the model
+   * while the camera sees the same colours must not drop them on the new side.
    */
-  function holdReading(cells) {
-    cam.held = { cells: cells.slice() };
-    cam.cells = cells.slice();
-    $('cam-shot').src = faceThumbnail();
-    $('cam-shot').hidden = false;
-    $('cam-accept').disabled = false;
-    $('cam-grid').classList.add('editable');
-    $('cam-grid').classList.remove('locking');
-    void $('cam-grid').offsetWidth;                  // restart the flash
-    $('cam-grid').classList.add('locking');
-    renderCamGrid();
-    sayHeld();
-  }
-  function sayHeld() {
-    var unsure = cam.held.cells.filter(function (c) { return !c; }).length;
-    $('cam-status').textContent = unsure === 0 ? t('cam.got')
-      : unsure === 1 ? t('cam.got.one') : t('cam.got.many', { n: unsure });
-  }
-  function clearHeld() {
-    cam.held = null;
-    cam.manual = false;
-    cam.gone = 0;
-    cam.candidate = { key: '', cells: null, streak: 0 };
-    cam.cells = new Array(9).fill(null);
-    $('cam-shot').hidden = true;
-    $('cam-accept').disabled = true;
-    $('cam-grid').classList.remove('editable', 'locking');
-    renderCamGrid();
-  }
-
-  /** Decide whether this frame's reading is steady enough to keep. */
   function considerReading(found) {
     if (!found) {
       cam.candidate = { key: '', cells: null, streak: 0 };
-      /* Once the cube has been taken away, whatever was on screen is settled:
-       * holding it up again means "read it afresh", corrections and all. */
-      if (++cam.gone > 4) cam.manual = false;
+      if (cam.live) $('cam-status').textContent = t('cam.show');
       return;
     }
     cam.gone = 0;
-    if (cam.manual) return;                          // being corrected by hand: leave it alone
     var cells = found.names;
     if (cam.history.length > 1) {
       cells = K.settle(cam.history.map(function (h) { return h.patches; }),
         cam.history.map(function (h) { return h.sure; }));
     }
     var known = cells.filter(function (c) { return c; }).length;
-    if (known < 7) { cam.candidate = { key: '', cells: null, streak: 0 }; return; }
-    /* Never trade a reading where every square came out for a patchier one. */
-    if (known < 9 && cam.held && cam.held.cells.every(Boolean)) return;
-    var key = cells.join(',');
+    if (known < 9) {
+      cam.candidate = { key: '', cells: null, streak: 0 };
+      if (cam.live) $('cam-status').textContent = t('cam.holdstill');
+      return;
+    }
+    var a = capView.angles();
+    var place = K.placement(a.rx, a.ry);
+    var key = place.face + ':' + cells.join(',');
     if (key === cam.candidate.key) cam.candidate.streak++;
     else cam.candidate = { key: key, cells: cells, streak: 1 };
-    /* A complete reading only has to hold for a moment; one with a grey square
-     * has to prove itself for longer, in case it is about to come good. */
-    /* Settling on a first reading should be quick. Throwing away one already
-     * kept should not: two readings that differ by a single square would
-     * otherwise swap back and forth while the cube sits still. */
-    var needed = cam.held ? (known === 9 ? 7 : 12) : (known === 9 ? 3 : 7);
-    if (cam.candidate.streak < needed) return;
-    if (cam.held && cam.held.cells.join(',') === key) return;    // already keeping exactly this
-    holdReading(cam.candidate.cells);
-  }
-
-  /** The square the reading came from, cut out for checking against the colours. */
-  function faceThumbnail() {
-    if (!cam.canvas) return '';
-    if (!cam.found) return cam.canvas.toDataURL('image/jpeg', 0.75);
-    var f = cam.found, side = f.cell * 3.1;
-    var out = document.createElement('canvas');
-    out.width = out.height = 120;
-    out.getContext('2d').drawImage(cam.canvas, f.x - side / 2, f.y - side / 2, side, side, 0, 0, 120, 120);
-    return out.toDataURL('image/jpeg', 0.8);
-  }
-
-  function acceptCamera() {
-    var cells = cam.held ? cam.held.cells : cam.cells;
-    var base = L.FACE_ORDER.indexOf(cam.place.face) * 9;
-    for (var j = 0; j < 9; j++) {
-      if (cells[j]) names[base + cam.place.fromCamera[j]] = cells[j];
+    if (cam.live) $('cam-status').textContent = t('cam.holdstill');
+    if (cam.candidate.streak < 3) return;
+    if (cam.handFixed[place.face]) return;             // this side was just corrected by hand
+    if (sameAsCube(place, cells)) {
+      $('cam-status').textContent = t('cam.side.done', { side: LANG.side(place.face) });
+      return;
     }
-    paintModel();
-    closeCamera();
+    applyReading(place, cells);
   }
-  function closeCamera() {
-    stopLive();
-    stopStream();
-    $('cam-modal').hidden = true;
+  function sameAsCube(place, cells) {
+    var base = L.FACE_ORDER.indexOf(place.face) * 9;
+    for (var j = 0; j < 9; j++) {
+      if (names[base + place.fromCamera[j]] !== cells[j]) return false;
+    }
+    return true;
+  }
+  function applyReading(place, cells) {
+    var base = L.FACE_ORDER.indexOf(place.face) * 9;
+    for (var j = 0; j < 9; j++) names[base + place.fromCamera[j]] = cells[j];
+    paintModel();
+    capView.flash();
+    $('cam-status').textContent = t('cam.side.read', { side: LANG.side(place.face) });
   }
 
   function trySolve() {
@@ -542,7 +435,7 @@
       $('cap-msg').textContent = left === 1 ? t('cap.left.one') : t('cap.left.many', { n: left });
       return;
     }
-    closeCamera();
+    stopCamera();
     assemble();
   }
 
@@ -640,7 +533,7 @@
 
   /** A scrambled cube to practise on, for anyone without one in their hands. */
   function startDemo() {
-    closeCamera();
+    stopCamera();
     var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
     solveAndTeach(state, ['white', 'red', 'green', 'yellow', 'orange', 'blue']);
   }
@@ -869,13 +762,11 @@
   $('coach-back').onclick = function () { step(-1); };
   $('coach-again').onclick = replay;
   $('coach-show-letters').onchange = function () { $('coach-letters').hidden = !this.checked; };
-  $('coach-restart').onclick = function () { closeCamera(); show('start'); };
+  $('coach-restart').onclick = function () { stopCamera(); show('start'); };
   $('done-again').onclick = function () { show('start'); };
-  $('cap-open-cam').onclick = openCamera;
-  $('cam-accept').onclick = acceptCamera;
-  $('cam-cancel').onclick = closeCamera;
-  $('cam-modal').onclick = function (e) { if (e.target === this) closeCamera(); };
+  $('cap-open-cam').onclick = toggleCamera;
+  $('cam-close').onclick = stopCamera;
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !$('cam-modal').hidden) closeCamera();
+    if (e.key === 'Escape' && cam.on) stopCamera();
   });
 })();

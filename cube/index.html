@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261121a">
+<link rel="stylesheet" href="style.css?v=20261121b">
 </head>
 <body>
 <div class="wrap">
@@ -41,6 +41,14 @@
   <section class="screen" id="screen-capture" hidden>
     <div class="cap-model">
       <div class="cube-stage" id="cap-cube" aria-label="Your cube. Drag to spin it, click a sticker to paint it."></div>
+      <div class="cam-dock" id="cam-dock" hidden>
+        <div class="cam-wrap" id="cam-wrap">
+          <video id="cam" playsinline muted autoplay></video>
+          <canvas class="cam-overlay" id="cam-overlay"></canvas>
+        </div>
+        <p class="small" id="cam-status"></p>
+        <button class="cam-close" id="cam-close" aria-label="off">×</button>
+      </div>
     </div>
 
     <div class="toolbar" id="cap-tools">
@@ -58,35 +66,6 @@
       <button class="linkish" id="cap-restart" data-t="cap.restart">Start again</button>
     </div>
   </section>
-
-  <!-- ============ camera popup ============ -->
-  <div class="modal" id="cam-modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="cam-title">
-      <p class="tell" id="cam-title" data-t="cam.title">Hold the glowing side up to the camera</p>
-
-      <div class="cam-wrap" id="cam-wrap">
-        <video id="cam" playsinline muted autoplay></video>
-        <div class="guide" id="cam-guide"></div>
-        <canvas class="cam-overlay" id="cam-overlay"></canvas>
-        <p class="cam-msg" id="cam-msg" hidden></p>
-      </div>
-
-      <div class="detected">
-        <div class="detected-row">
-          <img id="cam-shot" alt="What the camera read" hidden>
-          <div class="grid3" id="cam-grid"></div>
-        </div>
-        <p class="small muted" id="cam-status"></p>
-      </div>
-
-      <div class="palette" id="cam-palette"></div>
-
-      <div class="row center modal-actions">
-        <button class="btn go" id="cam-accept" disabled data-t="cam.accept">Accept ✓</button>
-        <button class="linkish" id="cam-cancel" data-t="cam.cancel">Cancel</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ============ check / net editor ============ -->
   <section class="screen" id="screen-check" hidden>
@@ -155,10 +134,10 @@
   </p>
 </div>
 
-<script src="lang.js?v=20261121a"></script>
-<script src="solver.js?v=20261121a"></script>
-<script src="cubeview.js?v=20261121a"></script>
-<script src="capture.js?v=20261121a"></script>
-<script src="app.js?v=20261121a"></script>
+<script src="lang.js?v=20261121b"></script>
+<script src="solver.js?v=20261121b"></script>
+<script src="cubeview.js?v=20261121b"></script>
+<script src="capture.js?v=20261121b"></script>
+<script src="app.js?v=20261121b"></script>
 </body>
 </html>
