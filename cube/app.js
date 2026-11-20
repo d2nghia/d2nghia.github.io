@@ -84,7 +84,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], gone: 0, on: false, handFixed: {}, candidate: { key: '', cells: null, streak: 0 } };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], gone: 0, on: false, mirror: false, handFixed: {}, candidate: { key: '', cells: null, streak: 0 } };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -121,7 +121,10 @@
   /* The colours are kept on this device, so a cube read once does not have to
    * be read again: closing the page, or coming back tomorrow, picks up the
    * same cube. Nothing leaves the browser. */
-  var STORE = 'cube-coach/cube';
+  /* The name carries a number: a cube read before the camera flip was fixed is
+   * mirrored, and it is better to forget it than to hand someone a cube that
+   * is not theirs. */
+  var STORE = 'cube-coach/cube2';
   function rememberCube() {
     try { localStorage.setItem(STORE, JSON.stringify({ names: names, at: Date.now() })); }
     catch (e) { /* private window, or storage turned off */ }
@@ -262,14 +265,15 @@
       .then(function (stream) {
         cam.stream = stream;
         video.srcObject = stream;
-        /* A camera pointing back at the child is shown as a mirror, the way
-         * they are used to seeing themselves. The picture is flipped, not the
-         * reading: the colours still come from the frame as the camera sent it,
-         * and the squares drawn on top flip with the picture, so they stay on
-         * the same stickers. */
+        /* A camera pointing back at the child looks at the cube from the far
+         * side, so a column on their left lands on the right of its picture.
+         * Both the picture and the reading are therefore flipped, and the cube
+         * on screen then matches the one in their hands. A rear camera looks
+         * the same way the child does, and is left alone. */
         var track = stream.getVideoTracks()[0];
         var facing = track && track.getSettings ? track.getSettings().facingMode : null;
-        $('cam-wrap').classList.toggle('mirror', facing !== 'environment');
+        cam.mirror = facing !== 'environment';
+        $('cam-wrap').classList.toggle('mirror', cam.mirror);
         return video.play().catch(function () { });
       })
       .then(function () {
@@ -344,7 +348,10 @@
     var canvas = cam.canvas || (cam.canvas = document.createElement('canvas'));
     canvas.width = canvas.height = REGION;
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.save();
+    if (cam.mirror) { ctx.translate(REGION, 0); ctx.scale(-1, 1); }
     ctx.drawImage(video, fx, fy, fs, fs, 0, 0, REGION, REGION);
+    ctx.restore();
 
     var found = K.readFace(ctx.getImageData(0, 0, REGION, REGION).data, REGION, REGION / SPREAD / 3);
     cam.view = { fx: fx, fy: fy, fs: fs, scale: scale, offX: offX, offY: offY };
@@ -370,10 +377,14 @@
     if (!cam.found || !cam.view) return;
     var v = cam.view, f = cam.found;
     function toScreen(px, py) {
-      return [(v.fx + px * v.fs / REGION) * v.scale + v.offX,
+      /* The reading was taken from a flipped picture; the overlay is drawn in
+       * the frame's own coordinates, because it flips back with the video. */
+      var x = cam.mirror ? REGION - px : px;
+      return [(v.fx + x * v.fs / REGION) * v.scale + v.offX,
       (v.fy + py * v.fs / REGION) * v.scale + v.offY];
     }
-    var step = toScreen(f.cell, 0)[0] - toScreen(0, 0)[0];
+    var flipStep = cam.mirror ? -1 : 1;
+    var step = (toScreen(f.cell, 0)[0] - toScreen(0, 0)[0]) * flipStep;
     ctx.lineWidth = 2;
     for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) {
       var p = toScreen(f.x + (c - 1) * f.cell, f.y + (r - 1) * f.cell);
