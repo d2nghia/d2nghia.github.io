@@ -82,7 +82,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
-  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], held: null, manual: false, candidate: { key: '', cells: null, streak: 0 } };
+  var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], held: null, manual: false, gone: 0, candidate: { key: '', cells: null, streak: 0 } };
 
   /**
    * A pencil cursor in the colour being painted, so a child can see what they
@@ -276,6 +276,7 @@
     $('cam-msg').textContent = text;
     $('cam-status').textContent = '';
     $('cam-title').textContent = 'No camera here';
+    clearHeld();
     $('cam-guide').hidden = true;
     $('cam-modal').querySelector('.modal-card').classList.add('trouble');
     $('cam-cancel').textContent = 'Paint by hand';
@@ -286,7 +287,6 @@
     $('cam-title').textContent = 'Hold the glowing side up to the camera';
     $('cam-modal').querySelector('.modal-card').classList.remove('trouble');
     $('cam-cancel').textContent = 'Cancel';
-    $('cam-capture').disabled = false;
   }
   function stopStream() {
     clearTimeout(cam.waiting);
@@ -441,11 +441,12 @@
     $('cam-status').textContent = unsure
       ? (unsure === 1 ? 'Got it, but one square was not clear — tap a colour onto the grey one.'
         : 'Got it, but ' + unsure + ' squares were not clear — tap colours onto the grey ones.')
-      : 'Got it. Put the cube down, then press Accept.';
+      : 'Got it. Put the cube down and press Accept, or hold it up again to read it afresh.';
   }
   function clearHeld() {
     cam.held = null;
     cam.manual = false;
+    cam.gone = 0;
     cam.candidate = { key: '', cells: null, streak: 0 };
     cam.cells = new Array(9).fill(null);
     $('cam-shot').hidden = true;
@@ -456,8 +457,15 @@
 
   /** Decide whether this frame's reading is steady enough to keep. */
   function considerReading(found) {
-    if (cam.manual) return;                          // a colour was fixed by hand: leave it alone
-    if (!found) { cam.candidate = { key: '', cells: null, streak: 0 }; return; }
+    if (!found) {
+      cam.candidate = { key: '', cells: null, streak: 0 };
+      /* Once the cube has been taken away, whatever was on screen is settled:
+       * holding it up again means "read it afresh", corrections and all. */
+      if (++cam.gone > 4) cam.manual = false;
+      return;
+    }
+    cam.gone = 0;
+    if (cam.manual) return;                          // being corrected by hand: leave it alone
     var cells = found.names;
     if (cam.history.length > 1) {
       cells = K.settle(cam.history.map(function (h) { return h.patches; }),
@@ -465,13 +473,20 @@
     }
     var known = cells.filter(function (c) { return c; }).length;
     if (known < 7) { cam.candidate = { key: '', cells: null, streak: 0 }; return; }
+    /* Never trade a reading where every square came out for a patchier one. */
+    if (known < 9 && cam.held && cam.held.cells.every(Boolean)) return;
     var key = cells.join(',');
     if (key === cam.candidate.key) cam.candidate.streak++;
     else cam.candidate = { key: key, cells: cells, streak: 1 };
     /* A complete reading only has to hold for a moment; one with a grey square
      * has to prove itself for longer, in case it is about to come good. */
-    var needed = known === 9 ? 3 : 7;
-    if (cam.candidate.streak >= needed) holdReading(cam.candidate.cells);
+    /* Settling on a first reading should be quick. Throwing away one already
+     * kept should not: two readings that differ by a single square would
+     * otherwise swap back and forth while the cube sits still. */
+    var needed = cam.held ? (known === 9 ? 7 : 12) : (known === 9 ? 3 : 7);
+    if (cam.candidate.streak < needed) return;
+    if (cam.held && cam.held.cells.join(',') === key) return;    // already keeping exactly this
+    holdReading(cam.candidate.cells);
   }
 
   /** The square the reading came from, cut out for checking against the colours. */
@@ -498,7 +513,6 @@
     stopLive();
     stopStream();
     $('cam-modal').hidden = true;
-    $('cam-capture').disabled = false;
   }
 
   function trySolve() {
@@ -811,7 +825,6 @@
   $('coach-restart').onclick = function () { closeCamera(); show('start'); };
   $('done-again').onclick = function () { show('start'); };
   $('cap-open-cam').onclick = openCamera;
-  $('cam-capture').onclick = clearHeld;
   $('cam-accept').onclick = acceptCamera;
   $('cam-cancel').onclick = closeCamera;
   $('cam-modal').onclick = function (e) { if (e.target === this) closeCamera(); };

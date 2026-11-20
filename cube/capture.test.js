@@ -143,6 +143,31 @@ readsBack(ALL_SIX, { scale: 0.6, wobble: true }, 'a dim room, all six colours');
 readsBack(ONE_COLOUR, {}, 'a face that is all one colour');
 readsBack(ONE_COLOUR, { gain: [1.12, 1.02, 0.82] }, 'an all-white face under a warm bulb');
 
+/* A face is often mostly red, orange and yellow. Taking the light's colour from
+   the average of such a face calls it a warm light and "corrects" it by adding
+   blue, which turned a white sticker blue on a real cube. */
+const WARM_HEAVY = ['orange', 'yellow', 'red', 'white', 'orange', 'blue', 'green', 'yellow', 'yellow'];
+readsBack(WARM_HEAVY, {}, 'a face of mostly warm colours');
+readsBack(WARM_HEAVY, { scale: 0.45 }, 'a face of mostly warm colours, dimly lit');
+readsBack(WARM_HEAVY, { gain: [1.15, 1.03, 0.78] }, 'a face of mostly warm colours under a warm bulb');
+readsBack(WARM_HEAVY, { gain: [1.12, 1.02, 0.82], scale: 0.5 }, 'a face of mostly warm colours, dim and warm');
+readsBack(WARM_HEAVY, { gain: [0.86, 0.97, 1.16] }, 'a face of mostly warm colours under a cool bulb');
+
+/* a face with no white sticker at all has nothing to calibrate against */
+const NO_WHITE = ['red', 'orange', 'yellow', 'green', 'blue', 'red', 'orange', 'green', 'blue'];
+readsBack(NO_WHITE, {}, 'a face with no white sticker');
+readsBack(NO_WHITE, { scale: 0.5 }, 'a face with no white sticker, dimly lit');
+
+/* and one that is nothing but white */
+readsBack(['white', 'white', 'white', 'white', 'white', 'white', 'white', 'white', 'white'],
+  { gain: [1.12, 1.02, 0.82] }, 'a finished white face under a warm bulb');
+
+/* red and orange sit next to each other and slide into one another */
+readsBack(['red', 'orange', 'red', 'orange', 'red', 'orange', 'white', 'red', 'orange'],
+  {}, 'a face of red and orange together');
+readsBack(['red', 'orange', 'red', 'orange', 'red', 'orange', 'white', 'red', 'orange'],
+  { gain: [1.15, 1.03, 0.78] }, 'red and orange together under a warm bulb');
+
 /* the old reading, one sticker at a time, got this face wrong — it must not now */
 const warmMixed = litFace(MIXED, { gain: [1.15, 1.03, 0.78] });
 const oneByOne = warmMixed.map(function (c) { return K.classify(c.r, c.g, c.b); });

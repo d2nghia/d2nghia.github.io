@@ -177,7 +177,6 @@ button { font-family: var(--font-body); }
 .modal-actions { gap: 10px; }
 .modal-card.trouble .detected,
 .modal-card.trouble .palette,
-.modal-card.trouble #cam-capture,
 .modal-card.trouble #cam-accept { display: none; }
 .modal-card.trouble .cam-wrap {
   background: var(--panel-2); max-height: none; aspect-ratio: auto; padding: 18px 16px; min-height: 0;

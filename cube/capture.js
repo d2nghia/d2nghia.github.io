@@ -140,36 +140,81 @@
    */
   function classifyFace(samples) {
     var n = samples.length, i;
-
-    // Take out the colour of the light itself: on average a face is roughly neutral.
-    var sum = { r: 0, g: 0, b: 0 };
-    for (i = 0; i < n; i++) { sum.r += samples[i].r; sum.g += samples[i].g; sum.b += samples[i].b; }
-    var avg = { r: sum.r / n || 1, g: sum.g / n || 1, b: sum.b / n || 1 };
-    var grey = (avg.r + avg.g + avg.b) / 3 || 1;
-    function gain(channelAvg) { return 1 + (grey / (channelAvg || 1) - 1) * 0.6; }
-    var gr = gain(avg.r), gg = gain(avg.g), gb = gain(avg.b);
     function clamp(v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
-
-    var hsv = samples.map(function (c) {
-      return toHsv({ r: clamp(c.r * gr), g: clamp(c.g * gg), b: clamp(c.b * gb) });
-    });
-
-    // White is whatever is clearly less colourful than the rest of this face.
-    var sats = hsv.map(function (c) { return c.s; }).slice().sort(function (a, b) { return a - b; });
-    var cut = 0.26, bestGap = 0;
-    for (i = 0; i < n - 1; i++) {
-      var gap = sats[i + 1] - sats[i], mid = (sats[i] + sats[i + 1]) / 2;
-      if (gap > bestGap && mid > 0.12 && mid < 0.5) { bestGap = gap; cut = mid; }
+    function sat(c) {
+      var max = Math.max(c.r, c.g, c.b);
+      return max ? (max - Math.min(c.r, c.g, c.b)) / max : 0;
     }
-    if (bestGap < 0.08) cut = 0.26;                 // no clear split: everything is coloured, or all white
+
+    /* Work out the colour of the light from the white sticker, not from the
+     * average of the face. Faces are often mostly red, orange and yellow, and
+     * an average would call that a warm light and "correct" it by adding blue,
+     * which turns the white sticker blue and slides orange towards red. The
+     * least colourful sticker is white if there is one at all, and white is
+     * what the light's own colour shows up in. */
+    var least = 0;
+    for (i = 1; i < n; i++) if (sat(samples[i]) < sat(samples[least])) least = i;
+    var lit = samples;
+    if (sat(samples[least]) < 0.42) {
+      var ref = samples[least], top = Math.max(ref.r, ref.g, ref.b) || 1;
+      var gr = top / (ref.r || 1), gg = top / (ref.g || 1), gb = top / (ref.b || 1);
+      lit = samples.map(function (c) {
+        return { r: clamp(c.r * gr), g: clamp(c.g * gg), b: clamp(c.b * gb) };
+      });
+    }
+
+    var hsv = lit.map(toHsv);
     var maxV = 0;
     for (i = 0; i < n; i++) if (hsv[i].v > maxV) maxV = hsv[i].v;
 
-    return hsv.map(function (c) {
+    // White is whatever is clearly less colourful than the rest of this face.
+    var sats = hsv.map(function (c) { return c.s; }).slice().sort(function (a, b) { return a - b; });
+    var cut = 0.3, bestGap = 0;
+    for (i = 0; i < n - 1; i++) {
+      var gap = sats[i + 1] - sats[i], mid = (sats[i] + sats[i + 1]) / 2;
+      if (gap > bestGap && mid > 0.1 && mid < 0.55) { bestGap = gap; cut = mid; }
+    }
+    if (bestGap < 0.1) cut = sats[n - 1] < 0.3 ? 1 : 0.3;   // all white, or no white at all
+
+    var names = hsv.map(function (c) {
       if (c.v < 0.14) return null;                  // too dark to call
-      if (c.s < cut && c.v > maxV * 0.45) return 'white';
+      if (c.s < cut && c.v > maxV * 0.4) return 'white';
       return hueName(c.h);
     });
+    return splitWarm(hsv, names);
+  }
+
+  /**
+   * Red and orange sit next to each other, and a sticker read slightly dark
+   * drifts from one to the other. Judging the warm stickers of a face against
+   * each other is steadier than judging each against a fixed boundary.
+   */
+  function splitWarm(hsv, names) {
+    var warm = [];
+    for (var i = 0; i < names.length; i++) {
+      if (names[i] === 'red' || names[i] === 'orange') warm.push(i);
+    }
+    if (!warm.length) return names;
+    var hues = warm.map(function (i) { return hsv[i].h > 300 ? hsv[i].h - 360 : hsv[i].h; });
+    var lo = Math.min.apply(null, hues), hi = Math.max.apply(null, hues);
+    if (hi - lo < 12) {
+      /* All of one colour: which one is decided by where the group sits, not by
+       * where each sticker falls relative to the boundary. */
+      var mean = hues.reduce(function (a, b) { return a + b; }, 0) / hues.length;
+      var one = mean < 19 ? 'red' : 'orange';
+      warm.forEach(function (i) { names[i] = one; });
+      return names;
+    }
+    // Two groups: split them at the widest gap between the hues on show.
+    var sorted = hues.slice().sort(function (a, b) { return a - b; });
+    var split = 19, widest = 0;
+    for (var k = 0; k < sorted.length - 1; k++) {
+      var gap = sorted[k + 1] - sorted[k];
+      if (gap > widest) { widest = gap; split = (sorted[k] + sorted[k + 1]) / 2; }
+    }
+    if (widest < 8) return names;
+    warm.forEach(function (i, j) { names[i] = hues[j] < split ? 'red' : 'orange'; });
+    return names;
   }
 
   /* ---------------- finding the face in the picture ----------------
