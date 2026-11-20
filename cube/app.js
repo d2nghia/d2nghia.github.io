@@ -262,6 +262,14 @@
       .then(function (stream) {
         cam.stream = stream;
         video.srcObject = stream;
+        /* A camera pointing back at the child is shown as a mirror, the way
+         * they are used to seeing themselves. The picture is flipped, not the
+         * reading: the colours still come from the frame as the camera sent it,
+         * and the squares drawn on top flip with the picture, so they stay on
+         * the same stickers. */
+        var track = stream.getVideoTracks()[0];
+        var facing = track && track.getSettings ? track.getSettings().facingMode : null;
+        $('cam-wrap').classList.toggle('mirror', facing !== 'environment');
         return video.play().catch(function () { });
       })
       .then(function () {

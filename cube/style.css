@@ -163,6 +163,8 @@ button { font-family: var(--font-body); }
   border-radius: 14px; padding: 6px; display: grid; gap: 4px; z-index: 3;
 }
 .cam-dock .cam-wrap { width: 100%; aspect-ratio: 1 / 1; }
+/* the picture and the squares drawn on it flip together, so they still line up */
+.cam-wrap.mirror video, .cam-wrap.mirror .cam-overlay { transform: scaleX(-1); }
 .cam-dock .small { color: rgba(255, 255, 255, .85); text-align: center; font-size: .68rem; line-height: 1.25; }
 .cam-close {
   position: absolute; top: -10px; left: -10px; width: 26px; height: 26px; border-radius: 50%;
