@@ -298,7 +298,8 @@
     if (opts.caption || half) {
       var cap = document.createElement('p');
       cap.className = 'fig-cap';
-      cap.textContent = (opts.caption || '') + (half ? ' turn it twice' : '');
+      var twice = window.CubeLang ? window.CubeLang.t('steps.twice') : 'turn it twice';
+      cap.textContent = (opts.caption || '') + (half ? ' ' + twice : '');
       wrap.appendChild(cap);
     }
     return wrap;

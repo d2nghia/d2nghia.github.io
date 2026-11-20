@@ -18,6 +18,8 @@
   var DEFAULT_CENTRES = { U: 'white', R: 'red', F: 'green', D: 'yellow', L: 'orange', B: 'blue' };
 
   var K = window.CubeCapture;
+  var LANG = window.CubeLang;
+  var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   function show(screen) {
     ['start', 'capture', 'check', 'coach', 'done'].forEach(function (s) {
@@ -108,13 +110,34 @@
     $('cam-grid').style.cursor = pencil;
     var read = $('cap-colour');
     read.firstElementChild.style.background = HEX[colour];
-    read.lastElementChild.textContent = 'Painting with ' + colour;
+    read.lastElementChild.textContent = t('cap.painting', { colour: LANG.colour(colour) });
     if (cam.palette) cam.palette.set(colour);
   }
 
   function paintModel() {
     if (capView) capView.setNames(names);
     $('cap-msg').hidden = true;
+    rememberCube();
+  }
+
+  /* The colours are kept on this device, so a cube read once does not have to
+   * be read again: closing the page, or coming back tomorrow, picks up the
+   * same cube. Nothing leaves the browser. */
+  var STORE = 'cube-coach/cube';
+  function rememberCube() {
+    try { localStorage.setItem(STORE, JSON.stringify({ names: names, at: Date.now() })); }
+    catch (e) { /* private window, or storage turned off */ }
+  }
+  function rememberedCube() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (!saved || !saved.names || saved.names.length !== 54) return null;
+      var any = saved.names.some(function (c) { return c && COLORS.indexOf(c) >= 0; });
+      return any ? saved.names.map(function (c) { return COLORS.indexOf(c) >= 0 ? c : null; }) : null;
+    } catch (e) { return null; }
+  }
+  function forgetCube() {
+    try { localStorage.removeItem(STORE); } catch (e) { /* nothing to do */ }
   }
   function facesLeft() {
     var left = 0;
@@ -124,9 +147,10 @@
     return left;
   }
 
-  function startCapture() {
+  function startCapture(fresh) {
     show('capture');
-    names = new Array(54).fill(null);
+    if (fresh) { forgetCube(); names = new Array(54).fill(null); }
+    else names = rememberedCube() || new Array(54).fill(null);
     if (!capView) {
       capView = window.CubeView.create($('cap-cube'));
       capView.onSticker(function (idx) {
@@ -141,10 +165,15 @@
     }
     if (!capPalette) capPalette = makePalette($('cap-palette'), setBrush, 'white');
     setBrush(capPalette.get());
-    $('cap-hint').textContent = window.matchMedia('(pointer: coarse)').matches
-      ? 'Drag to spin · tap a sticker to paint it'
-      : 'Right-drag to spin · click a sticker to paint it';
+    $('cap-hint').textContent = t(window.matchMedia('(pointer: coarse)').matches
+      ? 'cap.hint.touch' : 'cap.hint.mouse');
     paintModel();
+    var done = 6 - facesLeft();
+    if (!fresh && done) {
+      $('cap-msg').hidden = false;
+      $('cap-msg').className = 'small center kept-line';
+      $('cap-msg').textContent = done === 6 ? t('cap.kept.all') : t('cap.kept.some', { n: done });
+    }
   }
 
   /* ================= camera popup ================= */
@@ -165,7 +194,7 @@
     }
     cam.palette.set(capPalette.get());
     setBrush(capPalette.get());
-    $('cam-status').textContent = 'Starting the camera…';
+    $('cam-status').textContent = t('cam.starting');
     placeGuide();
     startStream();
   }
@@ -188,28 +217,23 @@
   function cameraTrouble(err) {
     var name = err && err.name;
     if (!window.isSecureContext) {
-      return 'This page needs to be opened over https before a browser will hand it the camera. ' +
-        'Paint the colours in by hand here.';
+      return t('cam.err.https');
     }
     /* Inside a frame that has not been given the camera, nobody is ever asked —
      * including when the browser reports that as a flat refusal. */
     if (framed() && frameAllowsCamera() !== true) {
-      return 'This preview page is not allowed to use the camera — nobody blocked it, the page is ' +
-        'inside a frame that never asks. It works on the real page. For now, paint the colours in by hand.';
+      return t('cam.err.frame');
     }
     if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
-      return 'I cannot find a camera on this device. Paint the colours in by hand instead.';
+      return t('cam.err.none');
     }
     if (name === 'NotReadableError' || name === 'TrackStartError') {
-      return 'Another app is using the camera. Close it and tap the camera again, or paint by hand.';
+      return t('cam.err.busy');
     }
     if (name === 'NotAllowedError') {
-      return cam.permission === 'denied'
-        ? 'The camera is turned off for this page. Tap the padlock next to the address to allow it, ' +
-          'or paint the colours in by hand.'
-        : 'No camera this time. Tap the camera button to ask again, or paint the colours in by hand.';
+      return t(cam.permission === 'denied' ? 'cam.err.off' : 'cam.err.refused');
     }
-    return 'The camera did not start. Paint the colours in by hand instead.';
+    return t('cam.err.other');
   }
 
   /** Has this page been told "no" before? Answered quickly, or not at all. */
@@ -253,15 +277,14 @@
          * otherwise leave a black box and a button that does nothing. */
         cam.waiting = setTimeout(function () {
           if ($('cam').videoWidth) return;
-          cameraFailed('No picture is coming through. Paint the colours in by hand instead.');
+          cameraFailed(t('cam.err.blank'));
         }, 6000);
       })
       .catch(function (err) {
         /* If a stream was already handed over, the camera is not the problem —
          * saying "no camera" would send the child hunting for the wrong thing. */
         if (cam.stream) {
-          cameraFailed('The camera started but this page could not use the picture. ' +
-            'Paint the colours in by hand, and tell whoever made this page.');
+          cameraFailed(t('cam.err.ours'));
         } else {
           cameraFailed(cameraTrouble(err));
         }
@@ -275,18 +298,18 @@
     $('cam-msg').hidden = false;
     $('cam-msg').textContent = text;
     $('cam-status').textContent = '';
-    $('cam-title').textContent = 'No camera here';
+    $('cam-title').textContent = t('cam.title.trouble');
     clearHeld();
     $('cam-guide').hidden = true;
     $('cam-modal').querySelector('.modal-card').classList.add('trouble');
-    $('cam-cancel').textContent = 'Paint by hand';
+    $('cam-cancel').textContent = t('cam.byhand');
   }
   function resetCameraPopup() {
     $('cam-msg').hidden = true;
     $('cam-guide').hidden = false;
-    $('cam-title').textContent = 'Hold the glowing side up to the camera';
+    $('cam-title').textContent = t('cam.title');
     $('cam-modal').querySelector('.modal-card').classList.remove('trouble');
-    $('cam-cancel').textContent = 'Cancel';
+    $('cam-cancel').textContent = t('cam.cancel');
   }
   function stopStream() {
     clearTimeout(cam.waiting);
@@ -300,7 +323,7 @@
   function startLive() {
     stopLive();
     cam.live = true;
-    $('cam-status').textContent = 'Reading the colours… line the side up in the square.';
+    $('cam-status').textContent = t('cam.reading');
     cam.timer = setInterval(sampleFrame, 180);
   }
   function stopLive() {
@@ -368,9 +391,7 @@
     renderCamGrid();
     if (cam.live) {
       if (cam.held) sayHeld();
-      else $('cam-status').textContent = cam.found
-        ? 'Reading it — hold still…'
-        : 'Hold a side of the cube up to the camera.';
+      else $('cam-status').textContent = t(cam.found ? 'cam.holdstill' : 'cam.show');
     }
   }
 
@@ -438,10 +459,8 @@
   }
   function sayHeld() {
     var unsure = cam.held.cells.filter(function (c) { return !c; }).length;
-    $('cam-status').textContent = unsure
-      ? (unsure === 1 ? 'Got it, but one square was not clear — tap a colour onto the grey one.'
-        : 'Got it, but ' + unsure + ' squares were not clear — tap colours onto the grey ones.')
-      : 'Got it. Put the cube down and press Accept, or hold it up again to read it afresh.';
+    $('cam-status').textContent = unsure === 0 ? t('cam.got')
+      : unsure === 1 ? t('cam.got.one') : t('cam.got.many', { n: unsure });
   }
   function clearHeld() {
     cam.held = null;
@@ -519,9 +538,8 @@
     var left = facesLeft();
     if (left > 0) {
       $('cap-msg').hidden = false;
-      $('cap-msg').textContent = left === 1
-        ? 'One grey side still to go — spin the cube round to find it.'
-        : left + ' grey sides still to go — spin the cube round to find them.';
+      $('cap-msg').className = 'small warn-line center';
+      $('cap-msg').textContent = left === 1 ? t('cap.left.one') : t('cap.left.many', { n: left });
       return;
     }
     closeCamera();
@@ -537,7 +555,7 @@
       var base = L.FACE_ORDER.indexOf(f) * 9;
       if (!names[base + 4]) names[base + 4] = DEFAULT_CENTRES[f];
     });
-    renderNet('Tap in the colours', 'Start with one side, then the next. The middle sticker of each side is already filled in.');
+    renderNet(t('net.title'), t('net.hint'));
   }
 
   function renderNet(title, hint) {
@@ -550,7 +568,7 @@
       var slot = document.createElement('div');
       slot.className = 'slot' + (f === 'U' ? ' u' : f === 'D' ? ' d' : '');
       var label = document.createElement('span');
-      label.textContent = { U: 'top', L: 'left', F: 'front', R: 'right', B: 'back', D: 'bottom' }[f];
+      label.textContent = t('net.face.' + f);
       var g = document.createElement('div');
       g.className = 'grid3';
       slot.appendChild(label);
@@ -571,13 +589,13 @@
   function assemble() {
     var centres = L.FACE_ORDER.map(function (f, i) { return names[i * 9 + 4]; });
     if (centres.some(function (c) { return !c; })) {
-      renderNet('A middle sticker is missing', 'Every side needs its middle sticker, because that is what decides the colour of that side.');
+      renderNet(t('net.err.centre'), t('net.err.centre.why'));
       return;
     }
     var distinct = {};
     for (var i = 0; i < 6; i++) {
       if (distinct[centres[i]]) {
-        renderNet('Two sides have the same middle colour', 'A cube has six different middle stickers. Check the ones I read as ' + centres[i] + '.');
+        renderNet(t('net.err.same'), t('net.err.same.why', { colour: LANG.colour(centres[i]) }));
         return;
       }
       distinct[centres[i]] = 1;
@@ -589,14 +607,14 @@
     for (i = 0; i < 54; i++) {
       var f = faceOfColour[names[i]];
       if (f == null) {
-        renderNet('One sticker is a colour I do not know', 'Tap the grey sticker and give it a colour.');
+        renderNet(t('net.err.unknown'), t('net.err.unknown.why'));
         return;
       }
       state[i] = f;
     }
     var check = L.validate(state);
     if (!check.ok) {
-      renderNet('That cube cannot exist', check.hint + ' Fix the sticker and press start again. (If the picture came out mirrored, the left and right columns get swapped.)');
+      renderNet(t('net.err.impossible'), t('net.err.impossible.why', { hint: check.hint }));
       return;
     }
 
@@ -613,7 +631,7 @@
     });
     var result = L.solve(state);
     if (!result.ok) {
-      renderNet('I could not work that one out', 'That is my fault, not yours. Check the colours once more and try again.');
+      renderNet(t('net.err.stuck'), t('net.err.stuck.why'));
       return;
     }
     session = { start: state, faceColour: faceColour, moves: result.moves, stages: result.stages, cursor: 0 };
@@ -636,25 +654,47 @@
   }
 
   /* ================= coach ================= */
-  var WORDS = {
-    U: ['Top row goes LEFT', '←'], "U'": ['Top row goes RIGHT', '→'], U2: ['Top row: half turn', '⇄'],
-    D: ['Bottom row goes RIGHT', '→'], "D'": ['Bottom row goes LEFT', '←'], D2: ['Bottom row: half turn', '⇄'],
-    R: ['Right side goes UP', '↑'], "R'": ['Right side goes DOWN', '↓'], R2: ['Right side: half turn', '⇅'],
-    L: ['Left side goes DOWN', '↓'], "L'": ['Left side goes UP', '↑'], L2: ['Left side: half turn', '⇅'],
-    F: ['Front face spins RIGHT', '↻'], "F'": ['Front face spins LEFT', '↺'], F2: ['Front face: half turn', '⇄'],
-    B: ['Back layer: its top goes LEFT', '←'], "B'": ['Back layer: its top goes RIGHT', '→'], B2: ['Back layer: half turn', '⇄']
+  var ARROW = {
+    U: '←', "U'": '→', U2: '⇄', D: '→', "D'": '←', D2: '⇄',
+    R: '↑', "R'": '↓', R2: '⇅', L: '↓', "L'": '↑', L2: '⇅',
+    F: '↻', "F'": '↺', F2: '⇄', B: '←', "B'": '→', B2: '⇄'
   };
-  var STAGE_INFO = {
-    cross: { n: 1, short: '1 · Cross', name: 'Make the white cross', goal: 'Put the four white edge pieces around the white middle, on the bottom. Each one also has to match the colour of its side.' },
-    corners: { n: 2, short: '2 · Corners', name: 'Lock in the white corners', goal: 'Each white corner goes under its own two colours. Now the whole bottom layer is finished.' },
-    belt: { n: 3, short: '3 · Belt', name: 'Fill the middle belt', goal: 'Four edge pieces slide into the middle ring. Two layers done, one to go.' },
-    yellowCross: { n: 4, short: '4 · Yellow +', name: 'Draw the yellow cross', goal: 'Make a yellow plus sign on the top. Only the top face matters here.' },
-    yellowFace: { n: 5, short: '5 · Yellow top', name: 'Make the whole top yellow', goal: 'The fish move twists the corners until the whole top side is yellow.' },
-    cornerPlace: { n: 6, short: '6 · Seats', name: 'Give the corners their seats', goal: 'Shuffle the top corners until each one sits between its own two colours.' },
-    lastEdges: { n: 7, short: '7 · Last four', name: 'Slide the last edges home', goal: 'The last four edges go round until every side is one colour. This is the finish.' }
+  function moveWords(move) { return [t('move.' + move), ARROW[move] || '']; }
+  var STAGE_NUMBER = {
+    cross: 1, corners: 2, belt: 3, yellowCross: 4, yellowFace: 5, cornerPlace: 6, lastEdges: 7
   };
+  function stageInfo(key) {
+    return {
+      n: STAGE_NUMBER[key], short: t('stage.' + key + '.short'),
+      name: t('stage.' + key + '.name'), goal: t('stage.' + key + '.goal')
+    };
+  }
   var STAGE_KEYS = ['cross', 'corners', 'belt', 'yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'];
   var cubeView = null;
+
+  function startCoachChrome() {
+    var strip = $('stage-strip');
+    strip.innerHTML = '';
+    STAGE_KEYS.forEach(function (k) {
+      var d = document.createElement('div');
+      d.textContent = stageInfo(k).short;
+      d.dataset.key = k;
+      strip.appendChild(d);
+    });
+    $('coach-hold').innerHTML = '';
+    [['bottom', L.FACE_INDEX.D], ['front', L.FACE_INDEX.F]].forEach(function (pair) {
+      var c = session.faceColour[pair[1]];
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = '<b style="background:' + HEX[c] + '"></b> ' +
+        t(pair[0] === 'bottom' ? 'coach.chip.bottom' : 'coach.chip.front', { colour: LANG.colour(c) });
+      $('coach-hold').appendChild(chip);
+    });
+    var hint = document.createElement('span');
+    hint.className = 'small';
+    hint.textContent = t('coach.hold');
+    $('coach-hold').appendChild(hint);
+  }
 
   function startCoach() {
     if (!cubeView) cubeView = window.CubeView.create($('coach-cube'), session.faceColour);
@@ -665,7 +705,7 @@
     strip.innerHTML = '';
     STAGE_KEYS.forEach(function (k) {
       var d = document.createElement('div');
-      d.textContent = STAGE_INFO[k].short;
+      d.textContent = stageInfo(k).short;
       d.dataset.key = k;
       strip.appendChild(d);
     });
@@ -674,12 +714,13 @@
       var c = session.faceColour[pair[1]];
       var chip = document.createElement('span');
       chip.className = 'chip';
-      chip.innerHTML = '<b style="background:' + HEX[c] + '"></b> ' + c + ' ' + pair[0];
+      chip.innerHTML = '<b style="background:' + HEX[c] + '"></b> ' +
+        t(pair[0] === 'bottom' ? 'coach.chip.bottom' : 'coach.chip.front', { colour: LANG.colour(c) });
       $('coach-hold').appendChild(chip);
     });
     var hint = document.createElement('span');
     hint.className = 'small';
-    hint.textContent = 'Hold it this way the whole time — never turn the whole cube.';
+    hint.textContent = t('coach.hold');
     $('coach-hold').appendChild(hint);
     show('coach');
     step(1);
@@ -717,21 +758,21 @@
     var i = session.cursor, total = session.moves.length;
     var current = session.moves[Math.max(0, i - 1)];
     var stageKey = stageOf(Math.max(0, i - 1));
-    var info = STAGE_INFO[stageKey];
-    var w = WORDS[current] || [current, ''];
+    var info = stageInfo(stageKey);
+    var w = moveWords(current);
     $('coach-word').innerHTML = '<span class="arrow">' + w[1] + '</span>' + w[0];
     $('coach-letters').textContent = current;
     $('coach-stage').textContent = info.name;
     $('coach-goal').textContent = info.goal;
 
     var bounds = stageBounds(stageKey);
-    $('coach-step').textContent = 'Step ' + info.n + ' of 7 · turn ' +
-      Math.max(1, i - bounds.from) + ' of ' + (bounds.to - bounds.from) +
-      ' · ' + (total - i) + ' turns left in all';
+    $('coach-step').textContent = t('coach.step', {
+      n: info.n, i: Math.max(1, i - bounds.from), of: bounds.to - bounds.from, left: total - i
+    });
     $('coach-bar').style.width = Math.round(i / total * 100) + '%';
     Array.prototype.forEach.call($('stage-strip').children, function (d) {
       var k = d.dataset.key;
-      d.className = k === stageKey ? 'on' : (STAGE_INFO[k].n < info.n ? 'done' : '');
+      d.className = k === stageKey ? 'on' : (STAGE_NUMBER[k] < info.n ? 'done' : '');
     });
     renderCase(stageKey, bounds.from);
     $('coach-back').disabled = i === 0;
@@ -780,14 +821,14 @@
     var edges = [1, 3, 5, 7].filter(function (i) { return top[i] === topColour; }).length;
     var corners = [0, 2, 6, 8].filter(function (i) { return top[i] === topColour; }).length;
     if (stageKey === 'yellowCross') {
-      text.textContent = edges === 0 ? 'Your top is a dot — it will take three goes.'
-        : edges === 2 ? (top[1] === topColour && top[7] === topColour) || (top[3] === topColour && top[5] === topColour)
-          ? 'Your top has a line.' : 'Your top has an L.'
-        : edges === 4 ? 'The cross is already there.' : 'Your top is nearly a cross.';
+      text.textContent = edges === 0 ? t('case.dot')
+        : edges === 2 ? ((top[1] === topColour && top[7] === topColour) || (top[3] === topColour && top[5] === topColour)
+          ? t('case.line') : t('case.L'))
+        : edges === 4 ? t('case.cross') : t('case.nearly');
     } else if (stageKey === 'yellowFace') {
-      text.textContent = corners + ' of the 4 top corners show ' + topColour + ' so far.';
+      text.textContent = t('case.corners', { n: corners, colour: LANG.colour(topColour) });
     } else {
-      text.textContent = 'The top is ' + topColour + '. Now the sides have to line up.';
+      text.textContent = t('case.sides', { colour: LANG.colour(topColour) });
     }
   }
   function countHome(state, stageKey) {
@@ -797,24 +838,30 @@
     var done = pieces.filter(function (p) {
       return p.every(function (i) { return state[i] === L.FACE_INDEX[L.FACELETS[i].face]; });
     }).length;
-    var what = stageKey === 'cross' ? 'cross pieces' : stageKey === 'corners' ? 'bottom corners' : 'belt pieces';
-    return done + ' of 4 ' + what + ' are already home.';
+    return t('case.home', { done: done, what: t('case.what.' + stageKey) });
   }
   function homeHas(piece, face) {
     return piece.some(function (i) { return L.FACE_INDEX[L.FACELETS[i].face] === face; });
   }
 
   function finish() {
-    $('done-count').textContent = 'That was ' + session.moves.length + ' turns.';
+    $('done-count').textContent = t('coach.done.count', { n: session.moves.length });
     show('done');
   }
 
   /* ================= wiring ================= */
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-  $('go-camera').onclick = startCapture;
+  LANG.apply(document);
+  $('lang-switch').onclick = function () { LANG.toggle(); };
+  LANG.onChange(function () {
+    if (!$('screen-capture').hidden) { setBrush(capPalette.get()); renderCaptureStep(); }
+    if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
+    if (!$('screen-done').hidden && session) finish();
+  });
+  $('go-camera').onclick = function () { startCapture(false); };
   $('go-manual').onclick = function () { startManual(); };
-  $('net-redo').onclick = startCapture;
-  $('cap-restart').onclick = startCapture;
+  $('net-redo').onclick = function () { startCapture(false); };
+  $('cap-restart').onclick = function () { startCapture(true); };
   $('cap-solve').onclick = trySolve;
   $('go-demo').onclick = startDemo;
   $('net-solve').onclick = assemble;

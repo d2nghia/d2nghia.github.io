@@ -9,42 +9,44 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261120d">
+<link rel="stylesheet" href="style.css?v=20261121a">
 </head>
 <body>
 <div class="wrap">
+  <button class="lang-switch" id="lang-switch" data-t="lang.other">Tiếng Việt</button>
   <header class="card">
-    <h1 style="font-size:clamp(1.6rem,5vw,2.2rem)">The seven steps</h1>
-    <p style="margin-top:8px">Every picture is a cube. The arrow shows the layer that turns and which way it goes. Work down a row, one picture at a time.</p>
+    <h1 style="font-size:clamp(1.6rem,5vw,2.2rem)" data-t="steps.title">The seven steps</h1>
+    <p style="margin-top:8px" data-t="steps.lede">Every picture is a cube.</p>
     <div class="row" style="margin-top:14px">
-      <a class="btn ghost small" href="index.html" style="text-decoration:none">Rather have the camera guide me? 📷</a>
-      <label class="toggle"><input type="checkbox" id="show-letters"> Show the letters (R U R′)</label>
+      <a class="btn ghost small" href="index.html" style="text-decoration:none"><span data-t="steps.tocoach">Rather have the camera guide me? 📷</span></a>
+      <label class="toggle"><input type="checkbox" id="show-letters"> <span data-t="steps.letters">Show the letters (R U R′)</span></label>
     </div>
   </header>
 
   <div class="watch" id="watch">
     <div class="watch-cube cube-stage" id="watch-cube" aria-label="A cube you can spin. Drag it."></div>
     <div class="watch-side">
-      <p class="small muted" id="watch-what">Pick any “Watch this” button and the moves play here.</p>
+      <p class="small muted" id="watch-what" data-t="steps.watch">Pick any “Watch this” button and the moves play here.</p>
       <p class="turn-word dark" id="watch-word"></p>
       <div class="row">
-        <button class="btn small" id="watch-play">▶ Play</button>
-        <button class="btn ghost small" id="watch-step">Step ▸</button>
-        <button class="btn ghost small" id="watch-reset">↺ Reset</button>
+        <button class="btn small" id="watch-play" data-t="steps.play">▶ Play</button>
+        <button class="btn ghost small" id="watch-step" data-t="steps.step">Step ▸</button>
+        <button class="btn ghost small" id="watch-reset" data-t="steps.reset">↺ Reset</button>
       </div>
-      <p class="small muted">Drag the cube to look round the back.</p>
+      <p class="small muted" data-t="steps.drag">Drag the cube to look round the back.</p>
     </div>
   </div>
 
   <main id="stages"></main>
 
   <p class="small muted" style="margin-top:28px; text-align:center">
-    <a href="/linktree/" style="color:inherit">← back to the links</a>
+    <a href="/linktree/" style="color:inherit" data-t="steps.back.links">← back to the links</a>
   </p>
 </div>
 
-<script src="solver.js?v=20261120d"></script>
-<script src="cubeview.js?v=20261120d"></script>
-<script src="steps.js?v=20261120d"></script>
+<script src="lang.js?v=20261121a"></script>
+<script src="solver.js?v=20261121a"></script>
+<script src="cubeview.js?v=20261121a"></script>
+<script src="steps.js?v=20261121a"></script>
 </body>
 </html>
