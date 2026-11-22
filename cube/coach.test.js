@@ -12,7 +12,7 @@ const LANG = langContext.module.exports;
 
 function fixture({ app = false, reducedMotion = false, solved = false, scramble } = {}) {
   let now = 0, serial = 0, framesPaused = false;
-  const tasks = new Map(), listeners = {}, nodes = new Map();
+  const tasks = new Map(), listeners = {}, nodes = new Map(), windowListeners = {}, resizeObservers = [];
   function schedule(fn, delay) {
     const id = ++serial;
     tasks.set(id, { at: now + delay, fn });
@@ -32,7 +32,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
   function element() {
     const classes = new Set();
     const el = {
-      style: {}, dataset: {}, children: [], hidden: false, clientWidth: 300,
+      style: {}, dataset: {}, children: [], hidden: false, clientWidth: 300, clientHeight: 300,
       attributes: {}, handlers: {}, scrollLeft: 0, offsetLeft: 0, offsetWidth: 32,
       classList: {
         add(...names) { names.forEach(n => classes.add(n)); },
@@ -48,10 +48,11 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
       setPointerCapture(id) { this.capturedPointer = id; },
       releasePointerCapture() { this.capturedPointer = null; },
       focus() { document.activeElement = this; },
+      getBoundingClientRect() { return { left: 16, top: 20, width: 728, height: 454 }; },
       closest(selector) {
         if (selector === 'button[data-step]' && this.dataset.step != null) return this;
-        if (selector === '#coach-move-track') {
-          for (let node = this; node; node = node.parent) if (node.id === 'coach-move-track') return node;
+        if (selector === '#coach-move-track, #coach-resize') {
+          for (let node = this; node; node = node.parent) if (['coach-move-track', 'coach-resize'].includes(node.id)) return node;
         }
         return null;
       },
@@ -73,16 +74,23 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
   }
   const get = id => { assert.ok(nodes.has(id), 'Missing HTML element: ' + id); return nodes.get(id); };
   const document = {
+    documentElement: { clientWidth: 1200 },
     hidden: false, createElement: element, getElementById: get,
     addEventListener(name, fn) { listeners[name] = fn; }
   };
   const window = {
     CubeLib: { ...L }, CubeCapture: K, location: { search: '?autofill=random' },
-    scrollTo() {}, addEventListener() {}, matchMedia: () => ({ matches: reducedMotion }),
+    innerHeight: 900, scrollTo() {},
+    addEventListener(name, fn) { (windowListeners[name] ||= []).push(fn); },
+    matchMedia: () => ({ matches: reducedMotion }),
     CubeLang: { t: LANG.t, colour: LANG.colour, apply() {}, onChange(fn) { this.change = fn; }, toggle() { this.change(); } }
   };
   const context = vm.createContext({
     window, document, URLSearchParams, Int8Array, performance: { now: () => now },
+    ResizeObserver: class {
+      constructor(callback) { this.callback = callback; resizeObservers.push(this); }
+      observe(host) { this.host = host; }
+    },
     setTimeout: schedule, clearTimeout: id => tasks.delete(id),
     clearInterval() {}, requestAnimationFrame: fn => schedule(fn, framesPaused ? 1000000 : 16),
     cancelAnimationFrame: id => tasks.delete(id),
@@ -121,7 +129,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     get(dir > 0 ? 'coach-next' : 'coach-back').onclick();
     await settle();
   }
-  return { window, document, listeners, get, tick, tasks, settle, advance,
+  return { window, document, listeners, windowListeners, resizeObservers, get, tick, tasks, settle, advance,
     pauseFrames() { framesPaused = true; },
     get coach() { return coach; }, get initial() { return initial; }, get solution() { return solution; },
     get pendingMove() { return pendingMove; },
@@ -732,4 +740,78 @@ test('step selection waits for a confirmed turn to finish and ignores the hidden
   track.children[0].onclick({ detail: 1 });
   assert.equal(get('screen-start').hidden, false);
   assert.equal(L.isSolved(coach.get()), true);
+});
+
+test('corner resizing works with mouse and touch, keeps cube orientation, and clamps to the window', () => {
+  for (const pointerType of ['mouse', 'touch']) {
+    const f = fixture({ app: true }), { get, coach, initial } = f;
+    const panel = get('coach-panel'), section = get('screen-coach'), handle = get('coach-resize');
+    panel.getBoundingClientRect = () => ({ left: 16, width: parseFloat(section.style.width) || 728, height: parseFloat(panel.style.height) || 454 });
+    const angles = { ...coach.angles() };
+    const event = (x, y) => ({ pointerType, pointerId: 1, button: 0, clientX: x, clientY: y,
+      stopPropagation() { this.stopped = true; }, preventDefault() {} });
+    const down = event(740, 450);
+    handle.emit('pointerdown', down);
+    assert.equal(down.stopped, true, 'The resize handle must not start a cube drag');
+    handle.emit('pointermove', event(840, 600));
+    assert.equal(section.style.width, '828px');
+    assert.equal(panel.style.height, '604px');
+    assert.deepEqual(coach.get(), initial);
+    assert.deepEqual({ ...coach.angles() }, angles);
+    handle.emit('pointerup', event(840, 600));
+    assert.equal(panel.classList.contains('is-resizing'), false);
+    assert.equal(handle.capturedPointer, null);
+    get('coach-move-track').children[5].onclick({ detail: 0 });
+    assert.equal(panel.style.height, '604px', 'Keep the chosen size when changing steps');
+    handle.emit('pointerdown', event(840, 600));
+    handle.emit('pointermove', event(-1000, -1000));
+    assert.equal(section.style.width, '320px');
+    assert.equal(panel.style.height, '360px');
+    handle.emit('pointermove', event(10000, 10000));
+    assert.equal(section.style.width, '1168px');
+    assert.equal(panel.style.height, '868px');
+    handle.emit('pointercancel', event(10000, 10000));
+    assert.equal(panel.classList.contains('is-resizing'), false);
+    f.document.documentElement.clientWidth = 500;
+    f.windowListeners.resize.forEach(fn => fn());
+    assert.equal(section.style.width, '468px', 'Shrink the panel when the browser gets narrower');
+  }
+});
+
+test('the resize handle supports arrow keys without navigating lesson steps', () => {
+  const f = fixture({ app: true }), { get, coach, initial } = f;
+  const handle = get('coach-resize'), panel = get('coach-panel'), section = get('screen-coach');
+  panel.getBoundingClientRect = () => ({ left: 16, width: parseFloat(section.style.width) || 728, height: parseFloat(panel.style.height) || 454 });
+  const key = (name, extra = {}) => ({ key: name, target: handle, preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.stopped = true; }, ...extra });
+  const down = key('ArrowDown');
+  handle.emit('keydown', down);
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(down.stopped, true);
+  assert.equal(panel.style.height, '474px');
+  handle.emit('keydown', key('ArrowRight', { shiftKey: true }));
+  assert.equal(section.style.width, '778px');
+  f.listeners.keydown(key('ArrowRight'));
+  f.listeners.keydown(key(' '));
+  assert.equal(coach.busy(), false);
+  assert.deepEqual(coach.get(), initial);
+  assert.equal(handle.getAttribute('aria-label'), LANG.t('coach.resize'));
+});
+
+test('resizing the cube stage scales the cube and arrows together without resetting the current preview', () => {
+  const f = fixture({ app: true }), host = f.get('coach-cube'), cube = host.children[0];
+  const observer = f.resizeObservers.find(o => o.host === host);
+  f.tick(1300);
+  const initial = f.coach.get(), angles = { ...f.coach.angles() };
+  const transforms = cube.children.map(el => el.style.transform);
+  host.clientWidth = 800;
+  host.clientHeight = 600;
+  observer.callback();
+  assert.equal(cube.style.scale, 600 / 230, 'The larger stage must allow a larger cube');
+  assert.deepEqual(cube.children.map(el => el.style.transform), transforms, 'Arrows and cubies retain their shared transforms');
+  assert.deepEqual(f.coach.get(), initial);
+  assert.deepEqual({ ...f.coach.angles() }, angles);
+  host.clientWidth = 250;
+  observer.callback();
+  assert.equal(cube.style.scale, 250 / 230, 'Fit within the shorter stage dimension');
 });
