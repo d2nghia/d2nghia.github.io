@@ -244,12 +244,14 @@
         // turn can opt in to animation so the child can actually follow it.
         var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var resetPreview = options.fromStart && shownAngle !== 0 && !reduce;
+        var guides = options.fromStart ? addTurnGuides(g, built.cube) : [];
         function pose(angle) {
-          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+          var rotation = fn + '(' + angle + 'deg) ';
+          group.forEach(function (c) { c.el.style.transform = rotation + base(c.pos); });
+          rotateTurnGuides(guides, rotation);
         }
         pose(resetPreview ? shownAngle : startAngle);
         repaint(g);
-        var guides = options.fromStart ? addTurnGuides(g, built.cube) : [];
         var remaining = Math.abs(target - startAngle) / 90;
         var dur = reduce ? 1 : Math.max(1, (ms || 620) * remaining), t0 = performance.now();
         var hold = reduce ? 0 : (options.hold || 0);
@@ -335,6 +337,7 @@
         built.cube.classList.add('demo-reset');
         later(function () {
           group.forEach(function (c) { c.el.style.transform = base(c.pos); });
+          rotateTurnGuides(run.guides, '');
           run.angle = 0;
           later(function () {
             built.cube.classList.remove('demo-reset');
@@ -352,7 +355,9 @@
           var ease = t * t * (3 - 2 * t);
           var angle = 90 * (quarter + ease) * g.d * CSS_SIGN[g.axis];
           run.angle = angle;
-          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+          var rotation = fn + '(' + angle + 'deg) ';
+          group.forEach(function (c) { c.el.style.transform = rotation + base(c.pos); });
+          rotateTurnGuides(run.guides, rotation);
           if (t < 1) run.frame = requestAnimationFrame(frame);
           else if (quarter + 1 < g.quarters) later(function () { turn(quarter + 1); }, 300);
           else { phase('hold'); later(reset, 950); }
@@ -453,6 +458,12 @@
     };
   }
 
+  function rotateTurnGuides(guides, rotation) {
+    guides.forEach(function (el) {
+      el.style.transform = rotation + faceTransform(el.dataset.face, CUBE / 2 + 5);
+    });
+  }
+
   // Place cues in the cube's own 3D scene, so they stay on the right row or
   // column when dragged. Four strip arrows cover the sides around a turn;
   // the fifth cue shows clockwise/counterclockwise on the turning face.
@@ -461,6 +472,7 @@
     function add(face, path, transform) {
       var el = document.createElement('div');
       el.className = 'turn-guide';
+      el.dataset.face = face;
       el.setAttribute('aria-hidden', 'true');
       el.style.transform = faceTransform(face, CUBE / 2 + 5);
       el.innerHTML = '<svg viewBox="-66 -66 132 132"><g transform="' + transform + '">' +

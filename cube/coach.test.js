@@ -124,12 +124,20 @@ test('all 18 moves repeat from the same state and cancel cleanly', () => {
     const cube = host.children[0];
     const guides = () => cube.children.filter(el => el.className === 'turn-guide');
     assert.equal(guides().length, 5);
+    const guideBases = guides().map(el => el.style.transform);
     assert.equal(host.dataset.demoPhase, 'focus');
     const cubies = cube.children.filter(el => el.className === 'cubie');
     const original = cubies.map(el => el.style.transform);
     f.tick(1300);
     assert.equal(host.dataset.demoPhase, 'turn');
     assert.equal(cubies.filter((el, i) => el.style.transform !== original[i]).length, 9);
+    const rotation = cubies.find((el, i) => el.style.transform !== original[i]).style.transform.match(/^rotate[XYZ]\([^)]+\) /)[0];
+    assert.deepEqual(guides().map(el => el.style.transform), guideBases.map(base => rotation + base),
+      'Every direction overlay must share the turning layer\'s angle and axis');
+    f.tick(suffix === '2' ? 2930 : 1620);
+    assert.equal(host.dataset.demoPhase, 'reset');
+    assert.deepEqual(guides().map(el => el.style.transform), guideBases, 'Reset overlays together with the preview');
+    assert.deepEqual(cubies.map(el => el.style.transform), original);
     f.tick(20000);
     assert.ok(f.tasks.size > 0, 'The demonstration must keep repeating');
     assert.deepEqual(view.get(), start, 'A repeated preview must never apply turns');
@@ -286,6 +294,7 @@ test('confirming an already completed preview shows a full slow turn and a pause
     const move = face + suffix;
     view.set(start);
     view.demonstrate(move);
+    const guideBases = host.children[0].children.filter(el => el.className === 'turn-guide').map(el => el.style.transform);
     f.tick(1800);
     assert.equal(host.dataset.demoPhase, 'hold');
     assert.equal(angles().filter(angle => angle === 90).length, 9);
@@ -294,6 +303,9 @@ test('confirming an already completed preview shows a full slow turn and a pause
     assert.ok(angles().every(angle => angle === 0), 'Reset the preview before the confirmation turn');
     f.tick(600);
     assert.equal(angles().filter(angle => angle > 35 && angle < 55).length, 9, move + ' is halfway through its visible turn');
+    const rotation = cubies.find(el => el.style.transform.startsWith('rotate')).style.transform.match(/^rotate[XYZ]\([^)]+\) /)[0];
+    assert.deepEqual(host.children[0].children.filter(el => el.className === 'turn-guide').map(el => el.style.transform),
+      guideBases.map(base => rotation + base), 'Confirmed turns carry the arrows with the rotating layer');
     assert.deepEqual(view.get(), start);
     assert.equal(view.busy(), true);
     assert.equal(host.children[0].children.filter(el => el.className === 'turn-guide').length, 5);
