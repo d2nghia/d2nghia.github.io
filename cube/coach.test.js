@@ -32,7 +32,8 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
   function element() {
     const classes = new Set();
     const el = {
-      style: {}, dataset: {}, children: [], hidden: false, clientWidth: 300, clientHeight: 300,
+      style: { setProperty(name, value) { this[name] = String(value); } },
+      dataset: {}, children: [], hidden: false, clientWidth: 300, clientHeight: 300,
       attributes: {}, handlers: {}, scrollLeft: 0, offsetLeft: 0, offsetWidth: 32,
       classList: {
         add(...names) { names.forEach(n => classes.add(n)); },
@@ -74,6 +75,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
   }
   const get = id => { assert.ok(nodes.has(id), 'Missing HTML element: ' + id); return nodes.get(id); };
   const document = {
+    body: element(),
     documentElement: { clientWidth: 1200 },
     hidden: false, createElement: element, getElementById: get,
     addEventListener(name, fn) { listeners[name] = fn; }
@@ -668,11 +670,11 @@ test('selecting any step reconstructs its cube, goal, and completion state in ei
   }
 });
 
-test('mouse and touch drags scroll the step row without changing the step or activating a release click', () => {
-  for (const pointerType of ['mouse', 'touch']) {
+test('left mouse, right mouse, and touch drags scroll the step row without changing the step or activating a release click', () => {
+  for (const [pointerType, button] of [['mouse', 0], ['mouse', 2], ['touch', 0]]) {
     const f = fixture({ app: true }), { get, coach, initial } = f;
     const track = get('coach-move-track'), angles = { ...coach.angles() };
-    const event = (x, extra = {}) => ({ pointerType, pointerId: 1, button: 0, clientX: x,
+    const event = (x, extra = {}) => ({ pointerType, pointerId: 1, button, clientX: x,
       stopPropagation() { this.stopped = true; }, preventDefault() {}, ...extra });
     track.scrollLeft = 200;
     const down = event(250);
@@ -688,7 +690,7 @@ test('mouse and touch drags scroll the step row without changing the step or act
     track.children[2].onclick({ detail: 1 });
     assert.deepEqual(coach.get(), initial, 'A release after dragging must not jump');
     assert.deepEqual({ ...coach.angles() }, angles);
-    track.emit('pointerdown', event(300));
+    track.emit('pointerdown', event(300, { button: 0 }));
     track.emit('pointermove', event(302));
     track.emit('pointerup', event(302));
     track.children[2].onclick({ detail: 1 });
@@ -698,6 +700,9 @@ test('mouse and touch drags scroll the step row without changing the step or act
     track.emit('pointercancel', event(150));
     assert.equal(track.classList.contains('is-dragging'), false);
     assert.equal(track.capturedPointer, null);
+    const menu = { preventDefault() { this.prevented = true; }, stopPropagation() {} };
+    track.emit('contextmenu', menu);
+    assert.equal(menu.prevented, true);
   }
 });
 
@@ -753,23 +758,25 @@ test('corner resizing works with mouse and touch, keeps cube orientation, and cl
     const down = event(740, 450);
     handle.emit('pointerdown', down);
     assert.equal(down.stopped, true, 'The resize handle must not start a cube drag');
-    handle.emit('pointermove', event(840, 600));
+    handle.emit('pointermove', event(790, 525));
     assert.equal(section.style.width, '828px');
     assert.equal(panel.style.height, '604px');
+    assert.ok(Number(panel.style['--coach-scale']) > 1, 'Scale step buttons, notes, and spacing with the panel');
+    assert.equal(f.document.body.classList.contains('is-coaching'), true);
     assert.deepEqual(coach.get(), initial);
     assert.deepEqual({ ...coach.angles() }, angles);
-    handle.emit('pointerup', event(840, 600));
+    handle.emit('pointerup', event(790, 525));
     assert.equal(panel.classList.contains('is-resizing'), false);
     assert.equal(handle.capturedPointer, null);
     get('coach-move-track').children[5].onclick({ detail: 0 });
     assert.equal(panel.style.height, '604px', 'Keep the chosen size when changing steps');
-    handle.emit('pointerdown', event(840, 600));
+    handle.emit('pointerdown', event(790, 525));
     handle.emit('pointermove', event(-1000, -1000));
     assert.equal(section.style.width, '320px');
     assert.equal(panel.style.height, '360px');
     handle.emit('pointermove', event(10000, 10000));
     assert.equal(section.style.width, '1168px');
-    assert.equal(panel.style.height, '868px');
+    assert.equal(panel.style.height, '676px');
     handle.emit('pointercancel', event(10000, 10000));
     assert.equal(panel.classList.contains('is-resizing'), false);
     f.document.documentElement.clientWidth = 500;

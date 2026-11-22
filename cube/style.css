@@ -51,6 +51,14 @@ button { font-family: var(--font-body); }
 }
 .screen { display: grid; gap: 16px; }
 .screen[hidden] { display: none !important; }
+.page-links { margin-top: 28px; text-align: center; }
+body.is-coaching .wrap {
+  display: grid; place-items: center; width: 100%; max-width: none;
+  height: 100dvh; padding: 16px;
+}
+body.is-coaching .page-links {
+  position: fixed; bottom: max(12px, env(safe-area-inset-bottom, 0px)); left: 0; width: 100%; margin: 0;
+}
 
 .card {
   background: var(--card);
@@ -212,22 +220,24 @@ button { font-family: var(--font-body); }
 
 /* coach */
 .move-progress {
-  justify-self: start; color: #fff; font: 800 1.2rem var(--font-display);
+  justify-self: start; color: #fff; font: 800 calc(1.2rem * var(--coach-scale, 1)) var(--font-display);
 }
 .move-goal {
-  color: #e2ecf1; font-size: .95rem; font-weight: 600; line-height: 1.4;
+  color: #e2ecf1; font-size: calc(.95rem * var(--coach-scale, 1)); font-weight: 600; line-height: 1.4;
   text-align: center; text-wrap: balance; max-width: 100%;
 }
 .move-track {
-  position: relative; display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding-block: 4px 6px;
+  position: relative; display: flex; gap: calc(6px * var(--coach-scale, 1)); overflow-x: auto; overflow-y: hidden;
+  padding-block: calc(4px * var(--coach-scale, 1)) calc(6px * var(--coach-scale, 1));
   width: 100%; min-width: 0; scrollbar-width: none; cursor: grab;
   touch-action: pan-y; overscroll-behavior-x: contain;
 }
 .move-track::-webkit-scrollbar { display: none; }
 .move-track button {
-  display: grid; place-items: center; flex: 0 0 auto; min-width: 32px; height: 32px;
-  padding-inline: 6px; border: 1px solid #657185; border-radius: 50%;
-  font: 700 .85rem var(--font-display); color: #c5ccda; background: transparent; cursor: pointer;
+  display: grid; place-items: center; flex: 0 0 auto;
+  min-width: calc(32px * var(--coach-scale, 1)); height: calc(32px * var(--coach-scale, 1));
+  padding-inline: calc(6px * var(--coach-scale, 1)); border: calc(1px * var(--coach-scale, 1)) solid #657185; border-radius: 50%;
+  font: 700 calc(.85rem * var(--coach-scale, 1)) var(--font-display); color: #c5ccda; background: transparent; cursor: pointer;
 }
 .move-track button.on { background: #bafff0; border-color: #bafff0; color: #10252e; box-shadow: 0 0 0 2px #10252e; }
 .move-track button.done { border-color: #77cdb9; color: #bafff0; }
@@ -239,12 +249,18 @@ button { font-family: var(--font-body); }
   background: radial-gradient(120% 100% at 50% 0%, rgba(255, 255, 255, .12), transparent 60%), var(--mat);
   border-radius: 18px; padding: 14px; display: grid; justify-items: center; gap: 10px;
 }
-#screen-coach { max-width: calc(100vw - 32px); }
-.coach-panel { position: relative; grid-template-rows: auto auto auto minmax(0, 1fr); }
-#coach-cube { max-width: none; max-height: none; height: min(300px, 50vh); aspect-ratio: auto; min-height: 0; }
-.coach-panel.is-resized #coach-cube { height: 100%; }
+#screen-coach { position: relative; width: min(728px, 100%); max-width: 100%; }
+#screen-coach > .row { position: absolute; top: calc(100% + 16px); left: 0; right: 0; }
+.coach-panel {
+  position: relative; grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: min(448px, max(240px, calc(100dvh - 224px))); max-height: max(240px, calc(100dvh - 224px));
+  padding: calc(14px * var(--coach-scale, 1)); gap: calc(10px * var(--coach-scale, 1));
+  border-radius: calc(18px * var(--coach-scale, 1));
+}
+#coach-cube { max-width: none; max-height: none; height: 100%; aspect-ratio: auto; min-height: 0; }
 .panel-resize {
-  position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; padding: 2px;
+  position: absolute; right: calc(4px * var(--coach-scale, 1)); bottom: calc(4px * var(--coach-scale, 1));
+  width: calc(32px * var(--coach-scale, 1)); height: calc(32px * var(--coach-scale, 1)); padding: calc(2px * var(--coach-scale, 1));
   border: 0; border-radius: 8px; background: transparent; color: #bafff0;
   cursor: nwse-resize; touch-action: none;
 }

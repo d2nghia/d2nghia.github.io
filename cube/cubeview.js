@@ -213,7 +213,7 @@
     function fit() {
       var w = host.clientWidth || 300;
       if (host.id === 'coach-cube') w = Math.min(w, host.clientHeight || 300);
-      built.cube.style.scale = Math.max(0.7, host.id === 'coach-cube' ? w / 230 : Math.min(1.7, w / 230));
+      built.cube.style.scale = host.id === 'coach-cube' ? Math.max(0.25, w / 230) : Math.max(0.7, Math.min(1.7, w / 230));
     }
     function repaint(highlight) {
       var litFace = names ? focusFace : null;

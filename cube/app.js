@@ -24,6 +24,7 @@
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   function show(screen) {
+    document.body.classList.toggle('is-coaching', screen === 'coach');
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
     ['start', 'capture', 'check', 'coach'].forEach(function (s) {
       $('screen-' + s).hidden = s !== screen;
@@ -651,7 +652,8 @@
     track.addEventListener('pointerdown', function (e) {
       // Keep the cube's mat from interpreting a strip drag as a cube rotation.
       e.stopPropagation();
-      if (e.button !== 0 || e.isPrimary === false) return;
+      if ((e.button !== 0 && e.button !== 2) || e.isPrimary === false) return;
+      if (e.button === 2) e.preventDefault();
       trackWasDragged = false;
       trackDrag = { id: e.pointerId, x: e.clientX, scroll: track.scrollLeft, moved: false };
     });
@@ -676,6 +678,7 @@
       try { track.releasePointerCapture(e.pointerId); } catch (err) { /* no capture on a tap */ }
     }
     track.addEventListener('pointerup', endDrag);
+    track.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
     track.addEventListener('pointercancel', endDrag);
     track.addEventListener('lostpointercapture', function (e) { if (e.target === track) endDrag(e); });
     track.addEventListener('keydown', function (e) {
@@ -702,13 +705,18 @@
 
   function wirePanelResize() {
     var panel = $('coach-panel'), section = $('screen-coach'), handle = $('coach-resize');
-    var drag = null;
+    var drag = null, reference = null;
     function size(width, height) {
-      var maxWidth = Math.max(1, document.documentElement.clientWidth - panel.getBoundingClientRect().left - 16);
+      if (!reference) reference = panel.getBoundingClientRect();
+      var maxWidth = Math.max(1, document.documentElement.clientWidth - 32);
       width = Math.max(Math.min(320, maxWidth), Math.min(maxWidth, width));
-      height = Math.max(360, Math.min(Math.max(360, window.innerHeight - 32), height));
+      var maxHeight = Math.max(240, window.innerHeight - 224);
+      height = Math.max(Math.min(360, maxHeight), Math.min(maxHeight, height));
       section.style.width = Math.round(width) + 'px';
       panel.style.height = Math.round(height) + 'px';
+      // Scale the text, step buttons, spacing, and handle with the panel area.
+      var scale = Math.sqrt(width * height / (reference.width * reference.height));
+      panel.style.setProperty('--coach-scale', Math.max(0.75, Math.min(2.5, scale)).toFixed(4));
       panel.classList.add('is-resized');
     }
     handle.addEventListener('pointerdown', function (e) {
@@ -725,7 +733,8 @@
       if (!drag || e.pointerId !== drag.id) return;
       e.preventDefault();
       e.stopPropagation();
-      size(drag.width + e.clientX - drag.x, drag.height + e.clientY - drag.y);
+      // Both opposite edges move because the panel stays centered.
+      size(drag.width + 2 * (e.clientX - drag.x), drag.height + 2 * (e.clientY - drag.y));
     });
     function end(e) {
       if (!drag || e.pointerId !== drag.id) return;
