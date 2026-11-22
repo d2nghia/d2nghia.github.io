@@ -250,10 +250,25 @@ body.is-coaching .page-links {
   border-radius: 18px; padding: 14px; display: grid; justify-items: center; gap: 10px;
 }
 #screen-coach { position: relative; width: min(728px, 100%); max-width: 100%; }
-#screen-coach > .row { position: absolute; top: calc(100% + 16px); left: 0; right: 0; }
+#screen-coach > .coach-controls {
+  position: absolute; top: calc(100% + 16px); left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  width: 100%; max-width: 720px; align-items: stretch;
+}
+#screen-coach > .coach-controls.is-complete { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 480px; }
+#coach-controls .btn {
+  width: 100%; min-width: 0; min-height: 56px; padding: 12px 16px;
+  border: 2px solid transparent; border-radius: 14px; font-size: 1rem; line-height: 1.35;
+}
+#coach-controls .btn.ghost { border-color: var(--line); }
+@media (max-width: 600px) {
+  #screen-coach > .coach-controls { gap: 8px; }
+  #coach-controls .btn { min-height: 64px; padding: 10px 8px; font-size: .9rem; }
+}
 .coach-panel {
   position: relative; grid-template-rows: auto auto auto minmax(0, 1fr);
-  height: min(448px, max(240px, calc(100dvh - 224px))); max-height: max(240px, calc(100dvh - 224px));
+  height: min(448px, max(240px, calc(100dvh - var(--coach-controls-space, 224px))));
+  max-height: max(240px, calc(100dvh - var(--coach-controls-space, 224px)));
   padding: calc(14px * var(--coach-scale, 1)); gap: calc(10px * var(--coach-scale, 1));
   border-radius: calc(18px * var(--coach-scale, 1));
 }

@@ -34,7 +34,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     const el = {
       style: { setProperty(name, value) { this[name] = String(value); } },
       dataset: {}, children: [], hidden: false, clientWidth: 300, clientHeight: 300,
-      attributes: {}, handlers: {}, scrollLeft: 0, offsetLeft: 0, offsetWidth: 32,
+      attributes: {}, handlers: {}, scrollLeft: 0, offsetLeft: 0, offsetWidth: 32, offsetHeight: 56,
       classList: {
         add(...names) { names.forEach(n => classes.add(n)); },
         remove(...names) { names.forEach(n => classes.delete(n)); },

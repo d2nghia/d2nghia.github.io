@@ -705,14 +705,21 @@
 
   function wirePanelResize() {
     var panel = $('coach-panel'), section = $('screen-coach'), handle = $('coach-resize');
+    var controls = $('coach-controls');
     var drag = null, reference = null;
+    function controlsSpace() {
+      // Leave room for wrapped labels below the centered panel on small screens.
+      var space = 2 * (controls.offsetHeight + 56);
+      section.style.setProperty('--coach-controls-space', space + 'px');
+      return space;
+    }
     function size(width, height) {
       if (!reference) reference = panel.getBoundingClientRect();
       var maxWidth = Math.max(1, document.documentElement.clientWidth - 32);
       width = Math.max(Math.min(320, maxWidth), Math.min(maxWidth, width));
-      var maxHeight = Math.max(240, window.innerHeight - 224);
-      height = Math.max(Math.min(360, maxHeight), Math.min(maxHeight, height));
       section.style.width = Math.round(width) + 'px';
+      var maxHeight = Math.max(240, window.innerHeight - controlsSpace());
+      height = Math.max(Math.min(360, maxHeight), Math.min(maxHeight, height));
       panel.style.height = Math.round(height) + 'px';
       // Scale the text, step buttons, spacing, and handle with the panel area.
       var scale = Math.sqrt(width * height / (reference.width * reference.height));
@@ -763,12 +770,21 @@
       var bounds = panel.getBoundingClientRect();
       size(bounds.width, bounds.height);
     });
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () {
+      if (section.hidden) return;
+      controlsSpace();
+      if (panel.classList.contains('is-resized')) {
+        var bounds = panel.getBoundingClientRect();
+        size(bounds.width, bounds.height);
+      }
+    }).observe(controls);
     labelResizeHandle();
   }
 
   function render() {
     var i = session.cursor;
     var done = i === session.moves.length;
+    $('coach-controls').classList.toggle('is-complete', done);
     var current = session.moves[i];
     $('coach-word').textContent = done ? '' : t('move.' + current);
     $('coach-progress').textContent = t('coach.progress', { current: i + 1, total: session.moves.length + 1 });
