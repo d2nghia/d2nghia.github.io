@@ -33,13 +33,28 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     const classes = new Set();
     const el = {
       style: {}, dataset: {}, children: [], hidden: false, clientWidth: 300,
+      attributes: {}, handlers: {}, scrollLeft: 0, offsetLeft: 0, offsetWidth: 32,
       classList: {
         add(...names) { names.forEach(n => classes.add(n)); },
         remove(...names) { names.forEach(n => classes.delete(n)); },
         toggle(name, on) { if (on) classes.add(name); else classes.delete(name); },
         contains(name) { return classes.has(name); }
       },
-      setAttribute() {}, addEventListener() {}, closest() { return null; },
+      setAttribute(name, value) { this.attributes[name] = String(value); },
+      removeAttribute(name) { delete this.attributes[name]; },
+      getAttribute(name) { return this.attributes[name] ?? null; },
+      addEventListener(name, fn) { (this.handlers[name] ||= []).push(fn); },
+      emit(name, event) { (this.handlers[name] || []).forEach(fn => fn(event)); },
+      setPointerCapture(id) { this.capturedPointer = id; },
+      releasePointerCapture() { this.capturedPointer = null; },
+      focus() { document.activeElement = this; },
+      closest(selector) {
+        if (selector === 'button[data-step]' && this.dataset.step != null) return this;
+        if (selector === '#coach-move-track') {
+          for (let node = this; node; node = node.parent) if (node.id === 'coach-move-track') return node;
+        }
+        return null;
+      },
       querySelectorAll() { return []; }, querySelector() { return null; },
       appendChild(child) { this.children.push(child); child.parent = this; },
       remove() { this.parent.children = this.parent.children.filter(c => c !== this); }
@@ -617,4 +632,104 @@ test('the goal uses the child\'s orange starting layer and survives replay and b
   await f.advance();
   await f.advance(-1);
   assert.equal(get('coach-goal').textContent, expected);
+});
+
+test('selecting any step reconstructs its cube, goal, and completion state in either direction', () => {
+  const f = fixture({ app: true, scramble: L.parse('R U F L D B') }), { get, coach, initial, moves } = f;
+  const track = get('coach-move-track');
+  const targets = f.solution.stages.flatMap(stage => stage.moves.flatMap(move =>
+    Array(move.endsWith('2') ? 2 : 1).fill(stage.key)));
+  for (const index of [moves.length - 1, 0, Math.floor(moves.length / 2), moves.length, 1, moves.length]) {
+    track.children[index].onclick({ detail: 1 });
+    assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, index)));
+    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: index + 1, total: moves.length + 1 }));
+    assert.equal(track.children[index].getAttribute('aria-current'), 'step');
+    assert.equal(track.children[index].tabIndex, 0);
+    assert.equal(track.children.filter(button => button.tabIndex === 0).length, 1);
+    assert.equal(track.children.filter(button => button.getAttribute('aria-current') === 'step').length, 1);
+    assert.equal(get('done-again').hidden, index !== moves.length);
+    if (index === moves.length) {
+      assert.equal(L.isSolved(coach.get()), true);
+      assert.equal(f.tasks.size, 0);
+    } else {
+      assert.equal(f.pendingMove, moves[index]);
+      assert.equal(get('coach-goal').textContent, LANG.t('coach.target.' + targets[index], {
+        base: LANG.colour(f.faceColours[L.FACE_INDEX.D]), top: LANG.colour(f.faceColours[L.FACE_INDEX.U])
+      }));
+    }
+  }
+});
+
+test('mouse and touch drags scroll the step row without changing the step or activating a release click', () => {
+  for (const pointerType of ['mouse', 'touch']) {
+    const f = fixture({ app: true }), { get, coach, initial } = f;
+    const track = get('coach-move-track'), angles = { ...coach.angles() };
+    const event = (x, extra = {}) => ({ pointerType, pointerId: 1, button: 0, clientX: x,
+      stopPropagation() { this.stopped = true; }, preventDefault() {}, ...extra });
+    track.scrollLeft = 200;
+    const down = event(250);
+    track.emit('pointerdown', down);
+    assert.equal(down.stopped, true, 'The cube mat must not receive the drag');
+    track.emit('pointermove', event(150));
+    assert.equal(track.scrollLeft, 300);
+    assert.equal(track.classList.contains('is-dragging'), true);
+    track.emit('pointermove', event(300));
+    assert.equal(track.scrollLeft, 150);
+    track.emit('pointerup', event(300));
+    assert.equal(track.classList.contains('is-dragging'), false);
+    track.children[2].onclick({ detail: 1 });
+    assert.deepEqual(coach.get(), initial, 'A release after dragging must not jump');
+    assert.deepEqual({ ...coach.angles() }, angles);
+    track.emit('pointerdown', event(300));
+    track.emit('pointermove', event(302));
+    track.emit('pointerup', event(302));
+    track.children[2].onclick({ detail: 1 });
+    assert.deepEqual(coach.get(), L.applyMoves(initial, f.moves.slice(0, 2)), 'A new tap still selects a step');
+    track.emit('pointerdown', event(250));
+    track.emit('pointermove', event(150));
+    track.emit('pointercancel', event(150));
+    assert.equal(track.classList.contains('is-dragging'), false);
+    assert.equal(track.capturedPointer, null);
+  }
+});
+
+test('step buttons support arrow keys, Home, End, and native Space without triggering coach shortcuts', () => {
+  const f = fixture({ app: true }), { get, coach, initial, moves } = f;
+  const track = get('coach-move-track');
+  function key(name, index) {
+    const event = { key: name, target: track.children[index],
+      preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; } };
+    track.emit('keydown', event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(event.stopped, true);
+  }
+  key('ArrowRight', 0);
+  assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 1)));
+  assert.equal(f.document.activeElement, track.children[1]);
+  key('End', 1);
+  assert.equal(L.isSolved(coach.get()), true);
+  key('ArrowLeft', moves.length);
+  assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, -1)));
+  key('Home', moves.length - 1);
+  assert.deepEqual(coach.get(), initial);
+  f.listeners.keydown({ key: ' ', target: track.children[2], preventDefault() { assert.fail('Leave native button activation available'); } });
+  track.children[2].onclick({ detail: 0 });
+  assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 2)));
+});
+
+test('step selection waits for a confirmed turn to finish and ignores the hidden coach', async () => {
+  const f = fixture({ app: true }), { get, coach, initial, moves } = f;
+  const track = get('coach-move-track');
+  get('coach-next').onclick();
+  assert.ok(track.children.every(button => button.disabled));
+  track.children[5].onclick({ detail: 1 });
+  assert.deepEqual(coach.get(), initial);
+  await f.settle();
+  assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 1)));
+  assert.ok(track.children.every(button => !button.disabled));
+  track.children[moves.length].onclick({ detail: 1 });
+  get('done-again').onclick();
+  track.children[0].onclick({ detail: 1 });
+  assert.equal(get('screen-start').hidden, false);
+  assert.equal(L.isSolved(coach.get()), true);
 });

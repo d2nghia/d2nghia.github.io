@@ -86,6 +86,7 @@
 
     'coach.step': 'Bước {n} trên 7 · nước {i} trên {of} · còn {left} nước nữa',
     'coach.progress': 'Bước {current} / {total}',
+    'coach.steps': 'Các bước',
     'coach.target.cross': 'Tạo dấu cộng màu {base}',
     'coach.target.corners': 'Hoàn thành tầng màu {base}',
     'coach.target.belt': 'Hoàn thành tầng giữa',
@@ -280,6 +281,7 @@
 
     'coach.step': 'Step {n} of 7 · turn {i} of {of} · {left} turns left in all',
     'coach.progress': 'Step {current} / {total}',
+    'coach.steps': 'Steps',
     'coach.target.cross': 'Make the {base} cross',
     'coach.target.corners': 'Finish the {base} layer',
     'coach.target.belt': 'Complete the middle layer',

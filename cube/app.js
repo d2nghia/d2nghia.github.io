@@ -581,15 +581,25 @@
     solveAndTeach(state, ['white', 'red', 'green', 'yellow', 'orange', 'blue']);
   }
   /* ================= coach ================= */
-  var cubeView = null;
+  var cubeView = null, trackDrag = null, trackWasDragged = false;
 
   function startCoachChrome() {
     var track = $('coach-move-track');
     track.innerHTML = '';
+    track.dataset.cursor = '';
+    track.setAttribute('aria-label', t('coach.steps'));
     // The solved cube is the final step, so the child can still go back.
     for (var i = 0; i <= session.moves.length; i++) {
-      var number = document.createElement('span');
+      var number = document.createElement('button');
+      number.type = 'button';
+      number.dataset.step = i;
       number.textContent = i + 1;
+      number.setAttribute('aria-label', t('coach.progress', { current: i + 1, total: session.moves.length + 1 }) +
+        (i === session.moves.length ? ' — ' + t('coach.done.title') : ''));
+      number.onclick = function (e) {
+        if (e.detail && trackWasDragged) return;
+        jumpTo(Number(this.dataset.step));
+      };
       track.appendChild(number);
     }
   }
@@ -628,6 +638,63 @@
         session.cursor < session.moves.length) previewTurn();
   }
 
+  function jumpTo(index) {
+    if (!session || $('screen-coach').hidden || cubeView.busy() ||
+        !Number.isInteger(index) || index < 0 || index > session.moves.length) return false;
+    session.cursor = index;
+    previewTurn();
+    return true;
+  }
+
+  function wireStepTrack() {
+    var track = $('coach-move-track');
+    track.addEventListener('pointerdown', function (e) {
+      // Keep the cube's mat from interpreting a strip drag as a cube rotation.
+      e.stopPropagation();
+      if (e.button !== 0 || e.isPrimary === false) return;
+      trackWasDragged = false;
+      trackDrag = { id: e.pointerId, x: e.clientX, scroll: track.scrollLeft, moved: false };
+    });
+    track.addEventListener('pointermove', function (e) {
+      if (!trackDrag || e.pointerId !== trackDrag.id) return;
+      var delta = e.clientX - trackDrag.x;
+      if (!trackDrag.moved && Math.abs(delta) < 5) return;
+      if (!trackDrag.moved) {
+        trackDrag.moved = true;
+        track.classList.add('is-dragging');
+        try { track.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      track.scrollLeft = trackDrag.scroll - delta;
+    });
+    function endDrag(e) {
+      if (!trackDrag || e.pointerId !== trackDrag.id) return;
+      trackWasDragged = trackDrag.moved;
+      trackDrag = null;
+      track.classList.remove('is-dragging');
+      try { track.releasePointerCapture(e.pointerId); } catch (err) { /* no capture on a tap */ }
+    }
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointercancel', endDrag);
+    track.addEventListener('lostpointercapture', function (e) { if (e.target === track) endDrag(e); });
+    track.addEventListener('keydown', function (e) {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return;
+      var button = e.target.closest('button[data-step]');
+      if (!button) return;
+      var index = Number(button.dataset.step);
+      if (e.key === 'ArrowLeft') index--;
+      else if (e.key === 'ArrowRight') index++;
+      else if (e.key === 'Home') index = 0;
+      else if (e.key === 'End') index = session.moves.length;
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      index = Math.max(0, Math.min(session.moves.length, index));
+      if (jumpTo(index)) track.children[index].focus({ preventScroll: true });
+    });
+  }
+
   function render() {
     var i = session.cursor;
     var done = i === session.moves.length;
@@ -641,10 +708,17 @@
     var track = $('coach-move-track');
     Array.prototype.forEach.call(track.children, function (number, n) {
       number.className = n === i ? 'on' : (n < i ? 'done' : '');
+      number.disabled = cubeView.busy();
+      number.tabIndex = n === i ? 0 : -1;
+      if (n === i) number.setAttribute('aria-current', 'step');
+      else number.removeAttribute('aria-current');
     });
     var active = track.children[i];
     // Scroll only the number strip; advancing a move must not scroll the page.
-    track.scrollLeft = active.offsetLeft + active.offsetWidth / 2 - track.clientWidth / 2;
+    if (track.dataset.cursor !== String(i)) {
+      track.scrollLeft = active.offsetLeft + active.offsetWidth / 2 - track.clientWidth / 2;
+      track.dataset.cursor = String(i);
+    }
     $('coach-back').disabled = i === 0 || cubeView.busy();
     $('coach-next').hidden = done;
     $('coach-next').disabled = done || cubeView.busy();
@@ -659,6 +733,7 @@
   /* ================= wiring ================= */
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   LANG.apply(document);
+  wireStepTrack();
   $('lang-switch').onclick = function () { LANG.toggle(); };
   LANG.onChange(function () {
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
@@ -682,6 +757,7 @@
     if (!session || $('screen-coach').hidden || e.defaultPrevented || e.isComposing ||
         e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     var target = e.target;
+    if (target && target.closest && target.closest('#coach-move-track')) return;
     if (target && (target.isContentEditable || (target.closest &&
         target.closest('input, textarea, select, [role="textbox"], [role="slider"]')))) return;
     var back = e.key === 'ArrowLeft', next = e.key === 'ArrowRight';

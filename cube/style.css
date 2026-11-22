@@ -219,16 +219,21 @@ button { font-family: var(--font-body); }
   text-align: center; text-wrap: balance; max-width: 100%;
 }
 .move-track {
-  position: relative; display: flex; gap: 6px; overflow: hidden; padding-block: 2px 6px;
-  width: 100%; min-width: 0;
+  position: relative; display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding-block: 4px 6px;
+  width: 100%; min-width: 0; scrollbar-width: none; cursor: grab;
+  touch-action: pan-y; overscroll-behavior-x: contain;
 }
-.move-track span {
+.move-track::-webkit-scrollbar { display: none; }
+.move-track button {
   display: grid; place-items: center; flex: 0 0 auto; min-width: 32px; height: 32px;
   padding-inline: 6px; border: 1px solid #657185; border-radius: 50%;
-  font: 700 .85rem var(--font-display); color: #c5ccda;
+  font: 700 .85rem var(--font-display); color: #c5ccda; background: transparent; cursor: pointer;
 }
-.move-track span.on { background: #bafff0; border-color: #bafff0; color: #10252e; box-shadow: 0 0 0 2px #10252e; }
-.move-track span.done { border-color: #77cdb9; color: #bafff0; }
+.move-track button.on { background: #bafff0; border-color: #bafff0; color: #10252e; box-shadow: 0 0 0 2px #10252e; }
+.move-track button.done { border-color: #77cdb9; color: #bafff0; }
+.move-track button:focus-visible { outline: 2px solid #bafff0; outline-offset: 1px; }
+.move-track button:disabled { cursor: default; }
+.move-track.is-dragging, .move-track.is-dragging button { cursor: grabbing; }
 
 .mat {
   background: radial-gradient(120% 100% at 50% 0%, rgba(255, 255, 255, .12), transparent 60%), var(--mat);
