@@ -246,7 +246,7 @@ test('Next animates before advancing and rapid clicks, keys, and replay cannot s
   }
   get('lang-switch').onclick();
   assert.deepEqual(pose(), before, 'Other controls cannot reset an in-flight turn');
-  f.tick(32);
+  f.tick(400);
   assert.notDeepEqual(pose(), before);
   assert.deepEqual(coach.get(), initial);
   await f.settle();
@@ -275,6 +275,56 @@ test('the final turn finishes rotating before showing completion', async () => {
   assert.equal(get('done-again').hidden, false);
   assert.equal(L.isSolved(coach.get()), true);
   assert.equal(f.tasks.size, 0);
+});
+
+test('confirming an already completed preview shows a full slow turn and a pause on every face', async () => {
+  const f = fixture(), host = f.get('coach-cube'), view = f.window.CubeView.create(host);
+  const start = L.applyMoves(L.solvedState(), L.parse("R U F'"));
+  const cubies = host.children[0].children.filter(el => el.className === 'cubie');
+  const angles = () => cubies.map(el => Math.abs(Number(el.style.transform.match(/^rotate[XYZ]\(([-.\d]+)deg\)/)?.[1] || 0)));
+  for (const face of L.FACE_ORDER) for (const suffix of ['', "'"]) {
+    const move = face + suffix;
+    view.set(start);
+    view.demonstrate(move);
+    f.tick(1800);
+    assert.equal(host.dataset.demoPhase, 'hold');
+    assert.equal(angles().filter(angle => angle === 90).length, 9);
+    const turn = view.play(move, 1200, { fromStart: true, hold: 300 });
+    f.tick(280);
+    assert.ok(angles().every(angle => angle === 0), 'Reset the preview before the confirmation turn');
+    f.tick(600);
+    assert.equal(angles().filter(angle => angle > 35 && angle < 55).length, 9, move + ' is halfway through its visible turn');
+    assert.deepEqual(view.get(), start);
+    assert.equal(view.busy(), true);
+    assert.equal(host.children[0].children.filter(el => el.className === 'turn-guide').length, 5);
+    f.tick(800);
+    assert.equal(angles().filter(angle => angle === 90).length, 9);
+    assert.equal(view.busy(), true, 'Pause on the fully rotated layer before advancing');
+    f.tick(200);
+    await turn;
+    assert.deepEqual(view.get(), L.applyMoves(start, [move]));
+    assert.equal(f.tasks.size, 0);
+    assert.equal(host.children[0].children.filter(el => el.className === 'turn-guide').length, 0);
+  }
+});
+
+test('Next takes time to visibly rotate regardless of when the preview is confirmed', async () => {
+  for (const elapsed of [0, 1300, 1800, 2800, 2920]) {
+    const f = fixture({ app: true, scramble: ['U'] }), { get, coach, initial } = f;
+    f.tick(elapsed);
+    get('coach-next').onclick();
+    await f.settle(800);
+    assert.equal(coach.busy(), true, 'A late confirmation must not finish instantly');
+    assert.deepEqual(coach.get(), initial);
+    assert.equal(get('done-again').hidden, true);
+    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: 2 }));
+    await f.settle(500);
+    assert.equal(coach.busy(), true, 'Keep the current step visible through the end pause');
+    await f.settle();
+    assert.equal(L.isSolved(coach.get()), true);
+    assert.equal(get('done-again').hidden, false);
+    assert.equal(f.tasks.size, 0);
+  }
 });
 
 test('done is an extra numbered step that lets the child revisit and repeat the last move', async () => {
@@ -336,10 +386,15 @@ test('done is an extra numbered step that lets the child revisit and repeat the 
   assert.equal(get('screen-start').hidden, false);
 });
 
-test('reduced motion advances promptly without a turn animation', async () => {
+test('reduced motion keeps automatic previews static but a requested turn remains visible', async () => {
   const f = fixture({ app: true, reducedMotion: true, scramble: ['U'] });
+  assert.equal(f.tasks.size, 0, 'Do not animate automatic previews');
   f.get('coach-next').onclick();
-  await f.settle(16);
+  await f.settle(800);
+  assert.equal(f.coach.busy(), true, 'Next still demonstrates the requested rotation');
+  assert.equal(f.get('done-again').hidden, true);
+  assert.deepEqual(f.coach.get(), f.initial);
+  await f.settle();
   assert.equal(f.get('done-again').hidden, false);
   assert.equal(L.isSolved(f.coach.get()), true);
   assert.equal(f.tasks.size, 0);

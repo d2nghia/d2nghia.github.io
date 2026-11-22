@@ -617,7 +617,7 @@
     if (dir < 0 && session.cursor === 0) return;
     if (dir > 0 && session.cursor === session.moves.length) return;
     var move = dir > 0 ? session.moves[session.cursor] : L.inverse([session.moves[session.cursor - 1]])[0];
-    var turn = cubeView.play(move);
+    var turn = cubeView.play(move, 1200, { fromStart: true, hold: 300, animate: true });
     render();
     await turn;
     session.cursor += dir;

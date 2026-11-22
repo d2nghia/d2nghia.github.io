@@ -225,11 +225,13 @@
       else paint(built.cubies, state, faceColour, { highlight: highlight });
     }
 
-    function play(move, ms) {
+    function play(move, ms, options) {
       if (busy) return Promise.resolve();
-      // Continue a matching preview from its visible angle instead of snapping
-      // the layer back to the start when the child confirms the turn.
-      var startAngle = demo && demo.move === move ? demo.angle : 0;
+      options = options || {};
+      // Continue a matching preview by default. The coach requests a full
+      // replay so every confirmation includes a clearly visible rotation.
+      var shownAngle = demo && demo.move === move ? demo.angle : 0;
+      var startAngle = options.fromStart ? 0 : shownAngle;
       stopDemo();
       return new Promise(function (done) {
         var g = geoOf(move);
@@ -238,35 +240,64 @@
         var target = 90 * g.quarters * g.d * CSS_SIGN[g.axis];
         var fn = g.axis === 'x' ? 'rotateX' : g.axis === 'y' ? 'rotateY' : 'rotateZ';
         var group = built.cubies.filter(function (c) { return layerHit(c.pos, g); });
-        group.forEach(function (c) { c.el.style.transform = fn + '(' + startAngle + 'deg) ' + base(c.pos); });
+        // Automatic previews respect reduced motion. A requested instructional
+        // turn can opt in to animation so the child can actually follow it.
+        var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var resetPreview = options.fromStart && shownAngle !== 0 && !reduce;
+        function pose(angle) {
+          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+        }
+        pose(resetPreview ? shownAngle : startAngle);
         repaint(g);
-        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var guides = options.fromStart ? addTurnGuides(g, built.cube) : [];
         var remaining = Math.abs(target - startAngle) / 90;
         var dur = reduce ? 1 : Math.max(1, (ms || 620) * remaining), t0 = performance.now();
-        var settled = false, frame = 0;
+        var hold = reduce ? 0 : (options.hold || 0);
+        var settled = false, frame = 0, timer = 0;
+        var transition = built.cube.style.transition;
         /* A hidden tab stops serving animation frames, so the turn also has a
          * timer behind it — otherwise the lesson would wait for ever. */
-        var safety = setTimeout(finish, dur + 400);
+        var safety = setTimeout(finish, (resetPreview ? 280 : 0) + dur + hold + 400);
         function finish() {
           if (settled) return;
           settled = true;
           clearTimeout(safety);
+          clearTimeout(timer);
           cancelAnimationFrame(frame);
+          guides.forEach(function (el) { el.remove(); });
+          built.cube.style.opacity = '';
+          built.cube.style.transition = transition;
           state = L.applyMoves(state, [move]);
           group.forEach(function (c) { c.el.style.transform = base(c.pos); });
           repaint(null);
           busy = false;
           done();
         }
-        frame = requestAnimationFrame(function animate(now) {
+        function animate(now) {
           if (settled) return;
           var t = Math.min(1, (now - t0) / dur);
           var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
           var angle = startAngle + (target - startAngle) * e;
-          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+          pose(angle);
           if (t < 1) frame = requestAnimationFrame(animate);
+          else if (hold) timer = setTimeout(finish, hold);
           else finish();
-        });
+        }
+        function startTurn() {
+          t0 = performance.now();
+          frame = requestAnimationFrame(animate);
+        }
+        if (resetPreview) {
+          // Always show a full confirmation turn, even when the preview has
+          // already reached 90 degrees. Conceal its reset rather than reversing.
+          built.cube.style.transition = 'opacity 140ms ease';
+          built.cube.style.opacity = '0';
+          timer = setTimeout(function () {
+            pose(0);
+            built.cube.style.opacity = '1';
+            timer = setTimeout(startTurn, 140);
+          }, 140);
+        } else startTurn();
       });
     }
 
