@@ -133,6 +133,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
   }
   return { window, document, listeners, windowListeners, resizeObservers, get, tick, tasks, settle, advance,
     pauseFrames() { framesPaused = true; },
+    replay() { listeners.keydown({ key: ' ', target: get('coach-cube'), preventDefault() {} }); },
     get coach() { return coach; }, get initial() { return initial; }, get solution() { return solution; },
     get pendingMove() { return pendingMove; },
     get faceColours() { return faceColours; },
@@ -269,12 +270,12 @@ test('Next animates before advancing and rapid clicks, keys, and replay cannot s
   const before = pose();
   get('coach-next').onclick();
   assert.deepEqual(pose(), before, 'Confirmation continues the rotating preview');
-  for (const id of ['coach-next', 'coach-back', 'coach-again']) assert.equal(get(id).disabled, true);
+  for (const id of ['coach-next', 'coach-back']) assert.equal(get(id).disabled, true);
   assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: moves.length + 1 }));
   for (let i = 0; i < 5; i++) {
     get('coach-next').onclick();
     get('coach-back').onclick();
-    get('coach-again').onclick();
+    f.replay();
     f.listeners.keydown({ key: 'ArrowRight', repeat: true, preventDefault() {} });
   }
   get('lang-switch').onclick();
@@ -285,7 +286,7 @@ test('Next animates before advancing and rapid clicks, keys, and replay cannot s
   await f.settle();
   assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 1)));
   assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: moves.length + 1 }));
-  for (const id of ['coach-next', 'coach-back', 'coach-again']) assert.equal(get(id).disabled, false);
+  for (const id of ['coach-next', 'coach-back']) assert.equal(get(id).disabled, false);
   assert.equal(get('coach-cube').dataset.demoPhase, 'focus');
 
   get('coach-back').onclick();
@@ -379,12 +380,11 @@ test('done is an extra numbered step that lets the child revisit and repeat the 
   assert.equal(get('done-count').hidden, false);
   assert.equal(get('coach-back').disabled, false);
   assert.equal(get('coach-next').hidden, true);
-  assert.equal(get('coach-again').hidden, true);
   assert.equal(get('done-again').hidden, false);
   assert.equal(get('coach-word').textContent, '');
   assert.equal(f.tasks.size, 0);
 
-  get('coach-again').onclick();
+  f.replay();
   get('coach-next').onclick();
   for (const key of [' ', 'ArrowUp', 'ArrowDown', 'ArrowRight']) {
     f.listeners.keydown({ key, target: get('done-again'), preventDefault() { assert.fail('Preserve native keys on the done step'); } });
@@ -412,7 +412,6 @@ test('done is an extra numbered step that lets the child revisit and repeat the 
   assert.equal(get('done-count').hidden, true);
   assert.equal(get('done-again').hidden, true);
   assert.equal(get('coach-next').hidden, false);
-  assert.equal(get('coach-again').hidden, false);
   assert.equal(get('coach-cube').dataset.demoPhase, 'focus');
 
   await f.advance();
@@ -462,7 +461,7 @@ test('an already solved cube finishes without starting an empty demonstration', 
   assert.equal(f.get('coach-back').disabled, true);
   f.get('coach-back').onclick();
   f.get('coach-next').onclick();
-  f.get('coach-again').onclick();
+  f.replay();
   assert.equal(f.tasks.size, 0);
   assert.equal(L.isSolved(f.coach.get()), true);
 });
@@ -477,7 +476,7 @@ test('only confirmations advance; undo, replay, visibility, and finishing cancel
   assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 1)));
   await f.advance(-1);
   assert.deepEqual(coach.get(), initial);
-  get('coach-again').onclick();
+  f.replay();
   get('lang-switch').onclick();
   assert.deepEqual(coach.get(), initial);
   assert.equal(get('coach-cube').dataset.demoPhase, 'focus');
@@ -569,7 +568,7 @@ test('a double turn becomes two numbered, separately confirmed quarter turns', a
   assert.equal(track.children[0].className, 'done');
   assert.equal(track.children[1].className, 'on');
   assert.equal(f.pendingMove, 'U', 'The repeated action keeps the same direction');
-  get('coach-again').onclick();
+  f.replay();
   f.tick(10000);
   assert.equal(track.children[1].className, 'on', 'Repeats keep the same step number');
   await f.advance(-1);
@@ -637,7 +636,7 @@ test('the goal uses the child\'s orange starting layer and survives replay and b
   assert.equal(f.faceColours[L.FACE_INDEX.D], 'orange');
   const expected = LANG.t('coach.target.corners', { base: LANG.colour('orange') });
   assert.equal(get('coach-goal').textContent, expected);
-  get('coach-again').onclick();
+  f.replay();
   assert.equal(get('coach-goal').textContent, expected);
   await f.advance();
   await f.advance(-1);

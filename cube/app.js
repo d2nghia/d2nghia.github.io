@@ -785,7 +785,6 @@
   function render() {
     var i = session.cursor;
     var done = i === session.moves.length;
-    $('coach-controls').classList.toggle('is-complete', done);
     var current = session.moves[i];
     $('coach-word').textContent = done ? '' : t('move.' + current);
     $('coach-progress').textContent = t('coach.progress', { current: i + 1, total: session.moves.length + 1 });
@@ -810,8 +809,6 @@
     $('coach-back').disabled = i === 0 || cubeView.busy();
     $('coach-next').hidden = done;
     $('coach-next').disabled = done || cubeView.busy();
-    $('coach-again').hidden = done;
-    $('coach-again').disabled = done || cubeView.busy();
     $('done-again').hidden = !done;
     $('done-again').disabled = cubeView.busy();
     $('done-count').hidden = !done;
@@ -838,7 +835,6 @@
   $('net-solve').onclick = assemble;
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };
-  $('coach-again').onclick = replay;
   $('done-again').onclick = function () { if (!cubeView.busy()) show('start'); };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
