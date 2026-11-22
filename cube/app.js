@@ -25,6 +25,7 @@
   var $ = function (id) { return document.getElementById(id); };
   function show(screen) {
     document.body.classList.toggle('is-coaching', screen === 'coach');
+    document.body.classList.toggle('is-capturing', screen === 'capture');
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
     ['start', 'capture', 'check', 'coach'].forEach(function (s) {
       $('screen-' + s).hidden = s !== screen;

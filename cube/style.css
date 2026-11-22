@@ -59,6 +59,14 @@ body.is-coaching .wrap {
 body.is-coaching .page-links {
   position: fixed; bottom: max(12px, env(safe-area-inset-bottom, 0px)); left: 0; width: 100%; margin: 0;
 }
+body.is-capturing .wrap {
+  position: relative; display: grid; place-items: center; width: 100%; max-width: none;
+  min-height: 100dvh; padding-block: 48px;
+}
+body.is-capturing #screen-capture { width: min(728px, 100%); }
+body.is-capturing .page-links {
+  position: absolute; bottom: 12px; left: 0; width: 100%; margin: 0;
+}
 
 .card {
   background: var(--card);
