@@ -279,7 +279,7 @@
     'net.err.stuck.why': 'That is my fault, not yours. Check the colours once more and try again.',
 
     'coach.step': 'Step {n} of 7 · turn {i} of {of} · {left} turns left in all',
-    'coach.progress': 'Move {current} / {total}',
+    'coach.progress': 'Step {current} / {total}',
     'coach.target.cross': 'Make the {base} cross',
     'coach.target.corners': 'Finish the {base} layer',
     'coach.target.belt': 'Complete the middle layer',

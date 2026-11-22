@@ -91,22 +91,14 @@
       <p class="move-goal" id="coach-goal" aria-live="polite"></p>
       <div class="cube-stage" id="coach-cube" aria-label="Your cube. Drag to spin it."></div>
       <p class="sr-only" id="coach-word" aria-live="polite"></p>
+      <p class="move-goal" id="done-count" hidden></p>
     </div>
 
     <div class="row center">
       <button class="btn ghost small" id="coach-back" data-t="coach.undo" aria-keyshortcuts="ArrowLeft">↶ Undo</button>
       <button class="btn ghost small" id="coach-again" data-t="coach.again" aria-keyshortcuts="Space ArrowUp ArrowDown">↺ Watch again</button>
       <button class="btn" id="coach-next" data-t="coach.next" aria-keyshortcuts="ArrowRight">I did it ▶</button>
-    </div>
-  </section>
-
-  <!-- ============ done ============ -->
-  <section class="screen" id="screen-done" hidden>
-    <div class="card done-card">
-      <h2 data-t="coach.done.title">Solved! 🎉</h2>
-      <p id="done-count" class="muted"></p>
-      <p data-t="coach.done.again">Scramble it and do it again — next time you will remember the fish move.</p>
-      <button class="btn" id="done-again" data-t="coach.done.button">Solve another one</button>
+      <button class="btn" id="done-again" data-t="coach.done.button" hidden>Solve another one</button>
     </div>
   </section>
 
@@ -115,10 +107,10 @@
   </p>
 </div>
 
-<script src="lang.js?v=20261122c"></script>
+<script src="lang.js?v=20261122d"></script>
 <script src="solver.js?v=20261122b"></script>
 <script src="cubeview.js?v=20261122b"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261122k"></script>
+<script src="app.js?v=20261122l"></script>
 </body>
 </html>

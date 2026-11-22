@@ -237,7 +237,7 @@ test('Next animates before advancing and rapid clicks, keys, and replay cannot s
   get('coach-next').onclick();
   assert.deepEqual(pose(), before, 'Confirmation continues the rotating preview');
   for (const id of ['coach-next', 'coach-back', 'coach-again']) assert.equal(get(id).disabled, true);
-  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: moves.length }));
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: moves.length + 1 }));
   for (let i = 0; i < 5; i++) {
     get('coach-next').onclick();
     get('coach-back').onclick();
@@ -251,7 +251,7 @@ test('Next animates before advancing and rapid clicks, keys, and replay cannot s
   assert.deepEqual(coach.get(), initial);
   await f.settle();
   assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, 1)));
-  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: moves.length }));
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: moves.length + 1 }));
   for (const id of ['coach-next', 'coach-back', 'coach-again']) assert.equal(get(id).disabled, false);
   assert.equal(get('coach-cube').dataset.demoPhase, 'focus');
 
@@ -269,19 +269,78 @@ test('the final turn finishes rotating before showing completion', async () => {
   get('coach-next').onclick();
   f.tick(300);
   assert.equal(get('screen-coach').hidden, false);
-  assert.equal(get('screen-done').hidden, true);
+  assert.equal(get('done-again').hidden, true);
   assert.deepEqual(coach.get(), initial);
   await f.settle();
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('done-again').hidden, false);
   assert.equal(L.isSolved(coach.get()), true);
   assert.equal(f.tasks.size, 0);
+});
+
+test('done is an extra numbered step that lets the child revisit and repeat the last move', async () => {
+  const f = fixture({ app: true, scramble: ['U2'] }), { get, coach, initial } = f;
+  coach.look(140, 230);
+  await f.advance();
+  await f.advance();
+  assert.equal(get('screen-coach').hidden, false);
+  assert.equal(L.isSolved(coach.get()), true);
+  assert.deepEqual({ ...coach.angles() }, { rx: 140, ry: 230 }, 'Keep the same cube and viewing angle');
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 3, total: 3 }));
+  assert.deepEqual(get('coach-move-track').children.map(n => n.className), ['done', 'done', 'on']);
+  assert.equal(get('coach-goal').textContent, LANG.t('coach.done.title'));
+  assert.equal(get('done-count').textContent, LANG.t('coach.done.count', { n: 2 }));
+  assert.equal(get('done-count').hidden, false);
+  assert.equal(get('coach-back').disabled, false);
+  assert.equal(get('coach-next').hidden, true);
+  assert.equal(get('coach-again').hidden, true);
+  assert.equal(get('done-again').hidden, false);
+  assert.equal(get('coach-word').textContent, '');
+  assert.equal(f.tasks.size, 0);
+
+  get('coach-again').onclick();
+  get('coach-next').onclick();
+  for (const key of [' ', 'ArrowUp', 'ArrowDown', 'ArrowRight']) {
+    f.listeners.keydown({ key, target: get('done-again'), preventDefault() { assert.fail('Preserve native keys on the done step'); } });
+  }
+  get('lang-switch').onclick();
+  f.document.hidden = true;
+  f.listeners.visibilitychange();
+  f.document.hidden = false;
+  f.listeners.visibilitychange();
+  f.tick(15000);
+  assert.equal(L.isSolved(coach.get()), true);
+  assert.equal(get('coach-goal').textContent, LANG.t('coach.done.title'));
+  assert.equal(f.tasks.size, 0, 'Done must never demonstrate an undefined move');
+
+  let prevented = false;
+  f.listeners.keydown({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(coach.busy(), true);
+  assert.equal(get('done-again').disabled, true);
+  get('done-again').onclick();
+  assert.equal(get('screen-coach').hidden, false, 'Do not leave while undoing the final turn');
+  await f.settle();
+  assert.deepEqual(coach.get(), L.applyMoves(initial, ['U']));
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: 3 }));
+  assert.equal(get('done-count').hidden, true);
+  assert.equal(get('done-again').hidden, true);
+  assert.equal(get('coach-next').hidden, false);
+  assert.equal(get('coach-again').hidden, false);
+  assert.equal(get('coach-cube').dataset.demoPhase, 'focus');
+
+  await f.advance();
+  assert.equal(L.isSolved(coach.get()), true);
+  assert.equal(get('done-again').hidden, false);
+  assert.equal(f.tasks.size, 0);
+  get('done-again').onclick();
+  assert.equal(get('screen-start').hidden, false);
 });
 
 test('reduced motion advances promptly without a turn animation', async () => {
   const f = fixture({ app: true, reducedMotion: true, scramble: ['U'] });
   f.get('coach-next').onclick();
   await f.settle(16);
-  assert.equal(f.get('screen-done').hidden, false);
+  assert.equal(f.get('done-again').hidden, false);
   assert.equal(L.isSolved(f.coach.get()), true);
   assert.equal(f.tasks.size, 0);
 });
@@ -304,7 +363,14 @@ test('a hidden tab finishes a confirmed turn even when animation frames stop', a
 
 test('an already solved cube finishes without starting an empty demonstration', () => {
   const f = fixture({ app: true, solved: true });
-  assert.equal(f.get('screen-done').hidden, false);
+  assert.equal(f.get('screen-coach').hidden, false);
+  assert.equal(f.get('done-again').hidden, false);
+  assert.equal(f.get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: 1 }));
+  assert.equal(f.get('coach-move-track').children.length, 1);
+  assert.equal(f.get('coach-back').disabled, true);
+  f.get('coach-back').onclick();
+  f.get('coach-next').onclick();
+  f.get('coach-again').onclick();
   assert.equal(f.tasks.size, 0);
   assert.equal(L.isSolved(f.coach.get()), true);
 });
@@ -333,7 +399,7 @@ test('only confirmations advance; undo, replay, visibility, and finishing cancel
   f.tick(15000);
   assert.equal(get('screen-coach').hidden, false, 'The last turn also waits for confirmation');
   await f.advance();
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('done-again').hidden, false);
   assert.equal(L.isSolved(coach.get()), true);
   assert.equal(f.tasks.size, 0);
   get('done-again').onclick();
@@ -386,8 +452,10 @@ test('shortcuts leave editing, modified keys, and other screens alone', async ()
     assert.deepEqual(coach.get(), initial);
   }
   for (let i = 0; i < f.moves.length; i++) await f.advance();
+  assert.equal(get('done-again').hidden, false);
+  get('done-again').onclick();
   f.listeners.keydown({ key: ' ', preventDefault() { assert.fail('Shortcuts only apply to the lesson'); } });
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('screen-start').hidden, false);
   assert.equal(f.tasks.size, 0);
 });
 
@@ -395,9 +463,9 @@ test('a double turn becomes two numbered, separately confirmed quarter turns', a
   const f = fixture({ app: true, scramble: ['U2'] }), { coach, initial, get } = f;
   assert.deepEqual(f.solution.moves, ['U2']);
   const track = get('coach-move-track');
-  assert.deepEqual(track.children.map(n => n.textContent), [1, 2]);
+  assert.deepEqual(track.children.map(n => n.textContent), [1, 2, 3]);
   assert.equal(track.children[0].className, 'on');
-  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: 2 }));
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: 3 }));
   assert.equal(f.pendingMove, 'U');
   f.tick(1800);
   assert.equal(get('coach-cube').dataset.demoPhase, 'hold');
@@ -405,7 +473,7 @@ test('a double turn becomes two numbered, separately confirmed quarter turns', a
   assert.equal(cubies.filter(el => el.style.transform.startsWith('rotateY(-90deg)')).length, 9);
   await f.advance();
   assert.deepEqual(coach.get(), L.applyMoves(initial, ['U']), 'The halfway state must be a real step');
-  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: 2 }));
+  assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 2, total: 3 }));
   assert.equal(track.children[0].className, 'done');
   assert.equal(track.children[1].className, 'on');
   assert.equal(f.pendingMove, 'U', 'The repeated action keeps the same direction');
@@ -418,22 +486,22 @@ test('a double turn becomes two numbered, separately confirmed quarter turns', a
   await f.advance();
   assert.equal(get('screen-coach').hidden, false);
   await f.advance();
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('done-again').hidden, false);
   assert.equal(L.isSolved(coach.get()), true);
   assert.equal(get('done-count').textContent, LANG.t('coach.done.count', { n: 2 }));
 });
 
 test('every numbered action is a quarter turn and the count covers the whole solve', async () => {
   const f = fixture({ app: true }), { coach, initial, moves, get } = f;
-  assert.equal(get('coach-move-track').children.length, moves.length);
+  assert.equal(get('coach-move-track').children.length, moves.length + 1);
   for (let i = 0; i < moves.length; i++) {
     assert.match(f.pendingMove, /^[URFDLB]'?$/);
-    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: i + 1, total: moves.length }));
+    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: i + 1, total: moves.length + 1 }));
     assert.deepEqual(coach.get(), L.applyMoves(initial, moves.slice(0, i)));
     await f.advance();
   }
   assert.equal(L.isSolved(coach.get()), true);
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('done-again').hidden, false);
 });
 
 test('scanned progress starts the coach at the remaining work on the child\'s own colour', async () => {
@@ -449,11 +517,11 @@ test('scanned progress starts the coach at the remaining work on the child\'s ow
     assert.deepEqual(f.initial, scanned, 'Keep the yellow starting layer instead of rebuilding white');
     assert.deepEqual(coach.get(), scanned, 'The first demonstration starts at the scanned cube');
     assert.ok(f.solution.stages.slice(0, completed).every(s => s.moves.length === 0));
-    assert.equal(get('coach-move-track').children.length, f.moves.length);
-    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: f.moves.length }));
+    assert.equal(get('coach-move-track').children.length, f.moves.length + 1);
+    assert.equal(get('coach-progress').textContent, LANG.t('coach.progress', { current: 1, total: f.moves.length + 1 }));
     for (let i = 0; i < f.moves.length; i++) await f.advance();
     assert.equal(L.isSolved(coach.get()), true);
-    assert.equal(get('screen-done').hidden, false);
+    assert.equal(get('done-again').hidden, false);
   }
 });
 
@@ -466,7 +534,7 @@ test('the short goal follows each phase through numbered quarter turns', async (
       await f.advance();
     }
   }
-  assert.equal(get('screen-done').hidden, false);
+  assert.equal(get('done-again').hidden, false);
 });
 
 test('the goal uses the child\'s orange starting layer and survives replay and back', async () => {

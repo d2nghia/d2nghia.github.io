@@ -25,7 +25,7 @@
   var $ = function (id) { return document.getElementById(id); };
   function show(screen) {
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
-    ['start', 'capture', 'check', 'coach', 'done'].forEach(function (s) {
+    ['start', 'capture', 'check', 'coach'].forEach(function (s) {
       $('screen-' + s).hidden = s !== screen;
     });
     window.scrollTo(0, 0);
@@ -586,22 +586,18 @@
   function startCoachChrome() {
     var track = $('coach-move-track');
     track.innerHTML = '';
-    session.moves.forEach(function (move, i) {
+    // The solved cube is the final step, so the child can still go back.
+    for (var i = 0; i <= session.moves.length; i++) {
       var number = document.createElement('span');
       number.textContent = i + 1;
       track.appendChild(number);
-    });
+    }
   }
 
   function startCoach() {
     if (!cubeView) cubeView = window.CubeView.create($('coach-cube'), session.faceColour);
     cubeView.colours(session.faceColour);
     session.cursor = 0;
-    if (!session.moves.length) {
-      cubeView.set(session.start);
-      finish();
-      return;
-    }
     startCoachChrome();
     show('coach');
     previewTurn();
@@ -610,35 +606,35 @@
   function previewTurn() {
     cubeView.set(L.applyMoves(session.start, session.moves.slice(0, session.cursor)));
     render();
-    if (!document.hidden) cubeView.demonstrate(session.moves[session.cursor]);
+    if (!document.hidden && session.cursor < session.moves.length) {
+      cubeView.demonstrate(session.moves[session.cursor]);
+    }
   }
 
   /** Only the child's confirmation advances the solution, never a demo repeat. */
   async function step(dir) {
     if (!session || $('screen-coach').hidden || cubeView.busy()) return;
     if (dir < 0 && session.cursor === 0) return;
+    if (dir > 0 && session.cursor === session.moves.length) return;
     var move = dir > 0 ? session.moves[session.cursor] : L.inverse([session.moves[session.cursor - 1]])[0];
     var turn = cubeView.play(move);
     render();
     await turn;
     session.cursor += dir;
-    if (session.cursor >= session.moves.length) {
-      cubeView.set(L.applyMoves(session.start, session.moves));
-      finish();
-      return;
-    }
     previewTurn();
   }
   function replay() {
-    if (session && !$('screen-coach').hidden && !cubeView.busy()) previewTurn();
+    if (session && !$('screen-coach').hidden && !cubeView.busy() &&
+        session.cursor < session.moves.length) previewTurn();
   }
 
   function render() {
     var i = session.cursor;
+    var done = i === session.moves.length;
     var current = session.moves[i];
-    $('coach-word').textContent = t('move.' + current);
-    $('coach-progress').textContent = t('coach.progress', { current: i + 1, total: session.moves.length });
-    $('coach-goal').textContent = t('coach.target.' + session.targets[i], {
+    $('coach-word').textContent = done ? '' : t('move.' + current);
+    $('coach-progress').textContent = t('coach.progress', { current: i + 1, total: session.moves.length + 1 });
+    $('coach-goal').textContent = done ? t('coach.done.title') : t('coach.target.' + session.targets[i], {
       base: LANG.colour(session.faceColour[L.FACE_INDEX.D]),
       top: LANG.colour(session.faceColour[L.FACE_INDEX.U])
     });
@@ -650,13 +646,14 @@
     // Scroll only the number strip; advancing a move must not scroll the page.
     track.scrollLeft = active.offsetLeft + active.offsetWidth / 2 - track.clientWidth / 2;
     $('coach-back').disabled = i === 0 || cubeView.busy();
-    $('coach-next').disabled = cubeView.busy();
-    $('coach-again').disabled = cubeView.busy();
-  }
-
-  function finish() {
+    $('coach-next').hidden = done;
+    $('coach-next').disabled = done || cubeView.busy();
+    $('coach-again').hidden = done;
+    $('coach-again').disabled = done || cubeView.busy();
+    $('done-again').hidden = !done;
+    $('done-again').disabled = cubeView.busy();
+    $('done-count').hidden = !done;
     $('done-count').textContent = t('coach.done.count', { n: session.moves.length });
-    show('done');
   }
 
   /* ================= wiring ================= */
@@ -666,7 +663,6 @@
   LANG.onChange(function () {
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
-    if (!$('screen-done').hidden && session) finish();
   });
   $('go-camera').onclick = function () { startCapture(false); };
   $('go-manual').onclick = function () { startManual(); };
@@ -678,7 +674,7 @@
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };
   $('coach-again').onclick = replay;
-  $('done-again').onclick = function () { show('start'); };
+  $('done-again').onclick = function () { if (!cubeView.busy()) show('start'); };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
   document.addEventListener('keydown', function (e) {
@@ -690,6 +686,8 @@
         target.closest('input, textarea, select, [role="textbox"], [role="slider"]')))) return;
     var back = e.key === 'ArrowLeft', next = e.key === 'ArrowRight';
     var again = e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown';
+    // On the done step, leave Space free to activate Solve another one.
+    if (session.cursor === session.moves.length && !back) return;
     if (!back && !next && !again) return;
     // Prevent scrolling and Space activating a focused Next/Back button.
     e.preventDefault();
