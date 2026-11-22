@@ -9,6 +9,8 @@
 (function () {
   'use strict';
   var L = window.CubeLib;
+  // Hidden testing entry point: index.html?autofill=random.
+  var randomTest = new URLSearchParams(window.location.search).get('autofill') === 'random';
 
   var COLORS = ['white', 'yellow', 'green', 'blue', 'red', 'orange'];
   var HEX = {
@@ -22,6 +24,7 @@
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   function show(screen) {
+    if (screen !== 'coach' && cubeView) cubeView.stopDemo();
     ['start', 'capture', 'check', 'coach', 'done'].forEach(function (s) {
       $('screen-' + s).hidden = s !== screen;
     });
@@ -123,6 +126,7 @@
    * is not theirs. */
   var STORE = 'cube-coach/cube2';
   function rememberCube() {
+    if (randomTest) return;
     try { localStorage.setItem(STORE, JSON.stringify({ names: names, at: Date.now() })); }
     catch (e) { /* private window, or storage turned off */ }
   }
@@ -135,6 +139,7 @@
     } catch (e) { return null; }
   }
   function forgetCube() {
+    if (randomTest) return;
     try { localStorage.removeItem(STORE); } catch (e) { /* nothing to do */ }
   }
   function facesLeft() {
@@ -148,6 +153,11 @@
   function startCapture(fresh) {
     show('capture');
     if (fresh) { forgetCube(); names = new Array(54).fill(null); }
+    else if (randomTest) {
+      // Legal turns keep the random colours solvable, with nine of each colour.
+      var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
+      names = Array.from(state, function (face) { return DEFAULT_CENTRES[L.FACE_ORDER[face]]; });
+    }
     else names = rememberedCube() || new Array(54).fill(null);
     if (!capView) {
       capView = window.CubeView.create($('cap-cube'));
@@ -166,7 +176,7 @@
     setBrush(capPalette.get());
     paintModel();
     var done = 6 - facesLeft();
-    if (!fresh && done) {
+    if (!fresh && !randomTest && done) {
       $('cap-msg').hidden = false;
       $('cap-msg').className = 'small center kept-line';
       $('cap-msg').textContent = done === 6 ? t('cap.kept.all') : t('cap.kept.some', { n: done });
@@ -537,8 +547,8 @@
 
   /** Turn a checked cube into a lesson. */
   function solveAndTeach(state, faceColour) {
-    /* Put white underneath and green in front so the spoken turns match their hands. */
-    var seq = L.orientationFor(faceColour, 'white', 'green') || findBottom(faceColour, 'white') || [];
+    // Use the child's most complete starting layer, whatever colour they chose.
+    var seq = L.orientationForProgress(state);
     seq.forEach(function (rot) {
       state = L.rotateState(state, rot);
       faceColour = L.rotateFaces(faceColour, rot);
@@ -548,7 +558,19 @@
       renderNet(t('net.err.stuck'), t('net.err.stuck.why'));
       return;
     }
-    session = { start: state, faceColour: faceColour, moves: result.moves, stages: result.stages, cursor: 0 };
+    // One numbered step is always one quarter turn. Keep repeated turns as
+    // separate actions, including the halfway state between them.
+    var moves = [], targets = [];
+    result.stages.forEach(function (stage) {
+      stage.moves.forEach(function (move) {
+        var count = move[1] === '2' ? 2 : 1;
+        for (var i = 0; i < count; i++) {
+          moves.push(count === 2 ? move[0] : move);
+          targets.push(stage.key);
+        }
+      });
+    });
+    session = { start: state, faceColour: faceColour, moves: moves, targets: targets, cursor: 0 };
     startCoach();
   }
 
@@ -558,204 +580,71 @@
     var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
     solveAndTeach(state, ['white', 'red', 'green', 'yellow', 'orange', 'blue']);
   }
-  function findBottom(faceColour, colour) {
-    for (var i = 0; i < L.ORIENTATIONS.length; i++) {
-      var f = faceColour;
-      L.ORIENTATIONS[i].forEach(function (n) { f = L.rotateFaces(f, n); });
-      if (f[L.FACE_INDEX.D] === colour) return L.ORIENTATIONS[i];
-    }
-    return null;
-  }
-
   /* ================= coach ================= */
-  var ARROW = {
-    U: '←', "U'": '→', U2: '⇄', D: '→', "D'": '←', D2: '⇄',
-    R: '↑', "R'": '↓', R2: '⇅', L: '↓', "L'": '↑', L2: '⇅',
-    F: '↻', "F'": '↺', F2: '⇄', B: '←', "B'": '→', B2: '⇄'
-  };
-  function moveWords(move) { return [t('move.' + move), ARROW[move] || '']; }
-  var STAGE_NUMBER = {
-    cross: 1, corners: 2, belt: 3, yellowCross: 4, yellowFace: 5, cornerPlace: 6, lastEdges: 7
-  };
-  function stageInfo(key) {
-    return {
-      n: STAGE_NUMBER[key], short: t('stage.' + key + '.short'),
-      name: t('stage.' + key + '.name'), goal: t('stage.' + key + '.goal')
-    };
-  }
-  var STAGE_KEYS = ['cross', 'corners', 'belt', 'yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'];
   var cubeView = null;
 
   function startCoachChrome() {
-    var strip = $('stage-strip');
-    strip.innerHTML = '';
-    STAGE_KEYS.forEach(function (k) {
-      var d = document.createElement('div');
-      d.textContent = stageInfo(k).short;
-      d.dataset.key = k;
-      strip.appendChild(d);
+    var track = $('coach-move-track');
+    track.innerHTML = '';
+    session.moves.forEach(function (move, i) {
+      var number = document.createElement('span');
+      number.textContent = i + 1;
+      track.appendChild(number);
     });
-    $('coach-hold').innerHTML = '';
-    [['bottom', L.FACE_INDEX.D], ['front', L.FACE_INDEX.F]].forEach(function (pair) {
-      var c = session.faceColour[pair[1]];
-      var chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.innerHTML = '<b style="background:' + HEX[c] + '"></b> ' +
-        t(pair[0] === 'bottom' ? 'coach.chip.bottom' : 'coach.chip.front', { colour: LANG.colour(c) });
-      $('coach-hold').appendChild(chip);
-    });
-    var hint = document.createElement('span');
-    hint.className = 'small';
-    hint.textContent = t('coach.hold');
-    $('coach-hold').appendChild(hint);
   }
 
   function startCoach() {
     if (!cubeView) cubeView = window.CubeView.create($('coach-cube'), session.faceColour);
     cubeView.colours(session.faceColour);
-    cubeView.set(session.start);
     session.cursor = 0;
-    var strip = $('stage-strip');
-    strip.innerHTML = '';
-    STAGE_KEYS.forEach(function (k) {
-      var d = document.createElement('div');
-      d.textContent = stageInfo(k).short;
-      d.dataset.key = k;
-      strip.appendChild(d);
-    });
-    $('coach-hold').innerHTML = '';
-    [['bottom', L.FACE_INDEX.D], ['front', L.FACE_INDEX.F]].forEach(function (pair) {
-      var c = session.faceColour[pair[1]];
-      var chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.innerHTML = '<b style="background:' + HEX[c] + '"></b> ' +
-        t(pair[0] === 'bottom' ? 'coach.chip.bottom' : 'coach.chip.front', { colour: LANG.colour(c) });
-      $('coach-hold').appendChild(chip);
-    });
-    var hint = document.createElement('span');
-    hint.className = 'small';
-    hint.textContent = t('coach.hold');
-    $('coach-hold').appendChild(hint);
-    show('coach');
-    step(1);
-  }
-
-  /** Move the lesson on by one turn (or back by one) and animate it. */
-  function step(dir) {
-    if (!session || cubeView.busy()) return;
-    if (dir > 0) {
-      if (session.cursor >= session.moves.length) return;
-      var move = session.moves[session.cursor];
-      session.cursor++;
-      render();
-      cubeView.play(move).then(function () {
-        if (session.cursor >= session.moves.length) finish();
-      });
-    } else {
-      if (session.cursor === 0) return;
-      session.cursor--;
-      var back = L.inverse([session.moves[session.cursor]])[0];
-      render();
-      cubeView.play(back, 380);
-    }
-  }
-  function replay() {
-    if (!session || cubeView.busy() || session.cursor === 0) return;
-    var move = session.moves[session.cursor - 1];
-    var back = L.inverse([move])[0];
-    cubeView.play(back, 220).then(function () { return cubeView.play(move); });
-  }
-
-  function stateAt(n) { return L.applyMoves(session.start, session.moves.slice(0, n)); }
-
-  function render() {
-    var i = session.cursor, total = session.moves.length;
-    var current = session.moves[Math.max(0, i - 1)];
-    var stageKey = stageOf(Math.max(0, i - 1));
-    var info = stageInfo(stageKey);
-    var w = moveWords(current);
-    $('coach-word').innerHTML = '<span class="arrow">' + w[1] + '</span>' + w[0];
-    $('coach-letters').textContent = current;
-    $('coach-stage').textContent = info.name;
-    $('coach-goal').textContent = info.goal;
-
-    var bounds = stageBounds(stageKey);
-    $('coach-step').textContent = t('coach.step', {
-      n: info.n, i: Math.max(1, i - bounds.from), of: bounds.to - bounds.from, left: total - i
-    });
-    $('coach-bar').style.width = Math.round(i / total * 100) + '%';
-    Array.prototype.forEach.call($('stage-strip').children, function (d) {
-      var k = d.dataset.key;
-      d.className = k === stageKey ? 'on' : (STAGE_NUMBER[k] < info.n ? 'done' : '');
-    });
-    renderCase(stageKey, bounds.from);
-    $('coach-back').disabled = i === 0;
-  }
-
-  function stageOf(moveIndex) {
-    var at = 0;
-    for (var s = 0; s < session.stages.length; s++) {
-      at += session.stages[s].moves.length;
-      if (moveIndex < at) return session.stages[s].key;
-    }
-    return session.stages[session.stages.length - 1].key;
-  }
-  function stageBounds(key) {
-    var from = 0;
-    for (var s = 0; s < session.stages.length; s++) {
-      if (session.stages[s].key === key) return { from: from, to: from + session.stages[s].moves.length };
-      from += session.stages[s].moves.length;
-    }
-    return { from: 0, to: session.moves.length };
-  }
-
-  /** The "which one is yours" bit: name the case the child is actually looking at. */
-  function renderCase(stageKey, stageStart) {
-    var box = $('coach-case'), grid = $('coach-case-grid'), text = $('coach-case-text');
-    var state = stateAt(stageStart);
-    var top = [];
-    for (var i = 0; i < 9; i++) top.push(session.faceColour[state[i]]);
-    var topColour = session.faceColour[L.FACE_INDEX.U];
-    var lateStages = ['yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'];
-    if (lateStages.indexOf(stageKey) < 0) {
-      box.hidden = false;
-      grid.innerHTML = '';
-      grid.hidden = true;
-      text.textContent = countHome(state, stageKey);
+    if (!session.moves.length) {
+      cubeView.set(session.start);
+      finish();
       return;
     }
-    box.hidden = false;
-    grid.innerHTML = '';
-    grid.hidden = false;
-    top.forEach(function (c, i) {
-      var d = document.createElement('div');
-      d.style.background = c === topColour ? HEX[c] : '#b9bfcc';
-      grid.appendChild(d);
-    });
-    var edges = [1, 3, 5, 7].filter(function (i) { return top[i] === topColour; }).length;
-    var corners = [0, 2, 6, 8].filter(function (i) { return top[i] === topColour; }).length;
-    if (stageKey === 'yellowCross') {
-      text.textContent = edges === 0 ? t('case.dot')
-        : edges === 2 ? ((top[1] === topColour && top[7] === topColour) || (top[3] === topColour && top[5] === topColour)
-          ? t('case.line') : t('case.L'))
-        : edges === 4 ? t('case.cross') : t('case.nearly');
-    } else if (stageKey === 'yellowFace') {
-      text.textContent = t('case.corners', { n: corners, colour: LANG.colour(topColour) });
-    } else {
-      text.textContent = t('case.sides', { colour: LANG.colour(topColour) });
+    startCoachChrome();
+    show('coach');
+    previewTurn();
+  }
+
+  function previewTurn() {
+    cubeView.set(L.applyMoves(session.start, session.moves.slice(0, session.cursor)));
+    render();
+    cubeView.demonstrate(session.moves[session.cursor]);
+  }
+
+  /** Only the child's confirmation advances the solution, never a demo repeat. */
+  function step(dir) {
+    if (!session || $('screen-coach').hidden) return;
+    session.cursor = Math.max(0, session.cursor + dir);
+    if (session.cursor >= session.moves.length) {
+      cubeView.set(L.applyMoves(session.start, session.moves));
+      finish();
+      return;
     }
+    previewTurn();
   }
-  function countHome(state, stageKey) {
-    var pieces = stageKey === 'cross' ? L.EDGES.filter(function (p) { return homeHas(p, L.FACE_INDEX.D) && p.length === 2; })
-      : stageKey === 'corners' ? L.CORNERS.filter(function (p) { return homeHas(p, L.FACE_INDEX.D); })
-        : L.EDGES.filter(function (p) { return !homeHas(p, L.FACE_INDEX.D) && !homeHas(p, L.FACE_INDEX.U); });
-    var done = pieces.filter(function (p) {
-      return p.every(function (i) { return state[i] === L.FACE_INDEX[L.FACELETS[i].face]; });
-    }).length;
-    return t('case.home', { done: done, what: t('case.what.' + stageKey) });
+  function replay() {
+    if (session && !$('screen-coach').hidden) previewTurn();
   }
-  function homeHas(piece, face) {
-    return piece.some(function (i) { return L.FACE_INDEX[L.FACELETS[i].face] === face; });
+
+  function render() {
+    var i = session.cursor;
+    var current = session.moves[i];
+    $('coach-word').textContent = t('move.' + current);
+    $('coach-progress').textContent = t('coach.progress', { current: i + 1, total: session.moves.length });
+    $('coach-goal').textContent = t('coach.target.' + session.targets[i], {
+      base: LANG.colour(session.faceColour[L.FACE_INDEX.D]),
+      top: LANG.colour(session.faceColour[L.FACE_INDEX.U])
+    });
+    var track = $('coach-move-track');
+    Array.prototype.forEach.call(track.children, function (number, n) {
+      number.className = n === i ? 'on' : (n < i ? 'done' : '');
+    });
+    var active = track.children[i];
+    // Scroll only the number strip; advancing a move must not scroll the page.
+    track.scrollLeft = active.offsetLeft + active.offsetWidth / 2 - track.clientWidth / 2;
+    $('coach-back').disabled = i === 0;
   }
 
   function finish() {
@@ -782,12 +671,32 @@
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };
   $('coach-again').onclick = replay;
-  $('coach-show-letters').onchange = function () { $('coach-letters').hidden = !this.checked; };
-  $('coach-restart').onclick = function () { stopCamera(); show('start'); };
   $('done-again').onclick = function () { show('start'); };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && cam.on) stopCamera();
+    if (!session || $('screen-coach').hidden || e.defaultPrevented || e.isComposing ||
+        e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var target = e.target;
+    if (target && (target.isContentEditable || (target.closest &&
+        target.closest('input, textarea, select, [role="textbox"], [role="slider"]')))) return;
+    var back = e.key === 'ArrowLeft', next = e.key === 'ArrowRight';
+    var again = e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown';
+    if (!back && !next && !again) return;
+    // Prevent scrolling and Space activating a focused Next/Back button.
+    e.preventDefault();
+    // Let held navigation keys follow the keyboard's normal repeat rate.
+    // Repeating a replay key would continually reset the animation.
+    if (e.repeat && again) return;
+    if (back) step(-1);
+    else if (next) step(1);
+    else replay();
   });
+  document.addEventListener('visibilitychange', function () {
+    if (!cubeView) return;
+    if (document.hidden) cubeView.stopDemo();
+    else replay();
+  });
+  if (randomTest) startCapture(false);
 })();

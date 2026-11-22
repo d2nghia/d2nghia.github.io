@@ -211,14 +211,24 @@ button { font-family: var(--font-body); }
 .problem { border-left: 5px solid var(--warn); background: #fff6f0; }
 
 /* coach */
-.stage-strip { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; }
-.stage-strip div {
-  flex: 0 0 auto; border: 2px solid var(--line); border-radius: 12px; padding: 5px 9px;
-  font-size: .72rem; font-family: var(--font-display); background: var(--card); color: var(--muted);
-  white-space: nowrap;
+.move-progress {
+  justify-self: start; color: #fff; font: 800 1.2rem var(--font-display);
 }
-.stage-strip div.on { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
-.stage-strip div.done { border-color: var(--good); color: var(--good); }
+.move-goal {
+  color: #e2ecf1; font-size: .95rem; font-weight: 600; line-height: 1.4;
+  text-align: center; text-wrap: balance; max-width: 100%;
+}
+.move-track {
+  position: relative; display: flex; gap: 6px; overflow: hidden; padding-block: 2px 6px;
+  width: 100%; min-width: 0;
+}
+.move-track span {
+  display: grid; place-items: center; flex: 0 0 auto; min-width: 32px; height: 32px;
+  padding-inline: 6px; border: 1px solid #657185; border-radius: 50%;
+  font: 700 .85rem var(--font-display); color: #c5ccda;
+}
+.move-track span.on { background: #bafff0; border-color: #bafff0; color: #10252e; box-shadow: 0 0 0 2px #10252e; }
+.move-track span.done { border-color: #77cdb9; color: #bafff0; }
 
 .mat {
   background: radial-gradient(120% 100% at 50% 0%, rgba(255, 255, 255, .12), transparent 60%), var(--mat);
@@ -245,6 +255,22 @@ button { font-family: var(--font-body); }
 }
 .cube.has-focus .sticker[data-facelet]::after { opacity: .36; }
 .cube.has-focus .sticker.is-focused::after { opacity: 0; }
+.cube.has-move .sticker[data-facelet]::after { opacity: .62; }
+.cube.has-move .sticker.is-moving::after { opacity: 0; }
+.cube.demonstrating .sticker.is-moving { box-shadow: inset 0 0 0 3px #9bfff0, 0 0 8px rgba(155,255,240,.45) !important; }
+.cube.demonstrating { transition: opacity .16s ease; }
+.cube.demo-reset { opacity: 0; }
+.turn-guide {
+  position: absolute; inset: 0; pointer-events: none; backface-visibility: hidden;
+}
+.turn-guide svg { width: 100%; height: 100%; overflow: visible; }
+.turn-guide path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.turn-guide-shadow { stroke: #10252e; stroke-width: 10px; }
+.turn-guide-ink { stroke: #bafff0; stroke-width: 5px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
 .face-light {
   position: absolute; inset: 0; border-radius: 9px;
   border: 1px solid rgba(255, 225, 160, .9);
@@ -291,22 +317,6 @@ button { font-family: var(--font-body); }
   text-align: center; min-height: 1.5em; display: flex; gap: 10px; align-items: center; justify-content: center;
 }
 .turn-word .arrow { font-size: 1.5rem; }
-.spin-hint { color: rgba(255, 255, 255, .55); font-size: .78rem; }
-.letters { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(255, 255, 255, .75); font-size: .85rem; letter-spacing: .08em; }
-.bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .25s ease; }
-.hold { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .85rem; color: var(--muted); }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; background: var(--card);
-  border: 2px solid var(--line); border-radius: 99px; padding: 4px 10px; font-size: .85rem;
-}
-.chip b { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .3); display: block; }
-.case {
-  display: flex; gap: 12px; align-items: center; background: #f4f7fb;
-  border: 2px dashed var(--line); border-radius: 14px; padding: 10px 12px;
-}
-.case .grid3 { grid-template-columns: repeat(3, 20px); grid-template-rows: repeat(3, 20px); gap: 2px; }
-.case .grid3 div { border-radius: 4px; border: 1px solid rgba(0, 0, 0, .3); }
 .toggle { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); font-size: .85rem; cursor: pointer; }
 
 .done-card { text-align: center; display: grid; gap: 12px; justify-items: center; }

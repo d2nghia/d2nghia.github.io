@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261121p">
+<link rel="stylesheet" href="style.css?v=20261122e">
 </head>
 <body>
 <div class="wrap">
@@ -85,36 +85,18 @@
 
   <!-- ============ coach ============ -->
   <section class="screen" id="screen-coach" hidden>
-    <div class="stage-strip" id="stage-strip"></div>
-    <div class="card">
-      <p class="small muted" id="coach-step"></p>
-      <h2 id="coach-stage"></h2>
-      <p id="coach-goal" style="margin-top:6px"></p>
-      <div class="case" id="coach-case" hidden>
-        <div class="grid3" id="coach-case-grid"></div>
-        <p class="small" id="coach-case-text"></p>
-      </div>
-      <div class="bar" style="margin-top:12px"><i id="coach-bar"></i></div>
-    </div>
-
     <div class="mat">
+      <p class="move-progress" id="coach-progress" aria-live="polite"></p>
+      <div class="move-track" id="coach-move-track" aria-hidden="true"></div>
+      <p class="move-goal" id="coach-goal" aria-live="polite"></p>
       <div class="cube-stage" id="coach-cube" aria-label="Your cube. Drag to spin it."></div>
-      <div class="turn-word" id="coach-word"></div>
-      <div class="letters" id="coach-letters" hidden></div>
-      <p class="spin-hint" data-t="coach.spin">Drag the cube to look around it</p>
+      <p class="sr-only" id="coach-word" aria-live="polite"></p>
     </div>
 
     <div class="row center">
-      <button class="btn ghost small" id="coach-back" data-t="coach.undo">↶ Undo</button>
-      <button class="btn ghost small" id="coach-again" data-t="coach.again">↺ Watch again</button>
-      <button class="btn" id="coach-next" data-t="coach.next">I did it ▶</button>
-    </div>
-    <div class="row center">
-      <div class="hold" id="coach-hold"></div>
-    </div>
-    <div class="row center">
-      <label class="toggle"><input type="checkbox" id="coach-show-letters"> <span data-t="coach.letters">Show the grown-up letters</span></label>
-      <button class="linkish" id="coach-restart" data-t="coach.restart">Start over</button>
+      <button class="btn ghost small" id="coach-back" data-t="coach.undo" aria-keyshortcuts="ArrowLeft">↶ Undo</button>
+      <button class="btn ghost small" id="coach-again" data-t="coach.again" aria-keyshortcuts="Space ArrowUp ArrowDown">↺ Watch again</button>
+      <button class="btn" id="coach-next" data-t="coach.next" aria-keyshortcuts="ArrowRight">I did it ▶</button>
     </div>
   </section>
 
@@ -133,10 +115,10 @@
   </p>
 </div>
 
-<script src="lang.js?v=20261121l"></script>
-<script src="solver.js?v=20261121d"></script>
-<script src="cubeview.js?v=20261121p"></script>
+<script src="lang.js?v=20261122b"></script>
+<script src="solver.js?v=20261122b"></script>
+<script src="cubeview.js?v=20261122a"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261121l"></script>
+<script src="app.js?v=20261122j"></script>
 </body>
 </html>

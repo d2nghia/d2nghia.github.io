@@ -613,6 +613,38 @@
     }
     return null;
   }
+
+  /** Rank progress in the beginner method, counting only pieces that match
+   * their centres. A finished face with mismatched side colours is not a layer.
+   * Completed stages take priority over partial progress in the next stage. */
+  function progressScore(state) {
+    function topCount(pieces) {
+      return pieces.filter(function (piece) {
+        return piece.some(function (i) { return FACELETS[i].face === 'U' && state[i] === FACE_INDEX.U; });
+      }).length;
+    }
+    var counts = [
+      solvedCount(state, D_EDGES), solvedCount(state, D_CORNERS), solvedCount(state, BELT_EDGES),
+      topCount(U_EDGES), topCount(U_CORNERS), solvedCount(state, U_CORNERS), solvedCount(state, U_EDGES)
+    ];
+    for (var i = 0; i < counts.length; i++) if (counts[i] < 4) return i * 10 + counts[i];
+    return counts.length * 10;
+  }
+
+  /** Continue solely from completed work, without any colour preference.
+   * Keep the scanned orientation when progress ties; otherwise use the shortest
+   * reorientation that reaches the furthest progress. These rotations change
+   * the reference frame, not the cube. */
+  function orientationForProgress(state) {
+    var best = [], score = progressScore(state);
+    ORIENTATIONS.forEach(function (seq) {
+      var candidate = state;
+      seq.forEach(function (rot) { candidate = rotateState(candidate, rot); });
+      var next = progressScore(candidate);
+      if (next > score) { best = seq; score = next; }
+    });
+    return best.slice();
+  }
   function applyMoves(state, moves) {
     var cur = new Int8Array(54), buf = new Int8Array(54);
     cur.set(state);
@@ -635,6 +667,7 @@
     fromFaceString: fromFaceString, toFaceString: toFaceString,
     randomScramble: randomScramble, parse: parse, inverse: inverse, seqPerm: seqPerm,
     rotateState: rotateState, rotateFaces: rotateFaces, orientationFor: orientationFor,
+    orientationForProgress: orientationForProgress,
     ORIENTATIONS: ORIENTATIONS
   };
 });

@@ -69,6 +69,7 @@
         var el = c.faces[f];
         if (idx == null) { el.style.background = DEAD; el.style.boxShadow = 'none'; return; }
         var lit = !opts.mask || opts.mask(idx);
+        el.classList.toggle('is-moving', !!opts.highlight && inLayer);
         el.style.background = lit ? HEX[faceColour[state[idx]]] : MUTED;
         el.style.boxShadow = opts.highlight && inLayer ? 'inset 0 0 0 4px #00a7bd' : 'none';
       });
@@ -108,7 +109,7 @@
     var focusFace = null;      // the side the camera will write onto
     var onView = null;
     var view = { rx: -22, ry: -32 };
-    var hintFace = null, hintTimer = 0;
+    var hintFace = null, hintTimer = 0, demo = null;
 
     function clearHints() {
       clearTimeout(hintTimer);
@@ -216,6 +217,7 @@
     function repaint(highlight) {
       var litFace = names ? focusFace : null;
       built.cube.classList.toggle('has-focus', !!litFace);
+      built.cube.classList.toggle('has-move', !!highlight);
       Object.keys(lights).forEach(function (f) {
         lights[f].classList.toggle('is-lit', f === litFace);
       });
@@ -224,6 +226,7 @@
     }
 
     function play(move, ms) {
+      stopDemo();
       return new Promise(function (done) {
         var g = geoOf(move);
         if (!g || busy) { done(); return; }
@@ -257,6 +260,72 @@
           else finish();
         });
       });
+    }
+
+    // Preview turns never change state. Each repeat starts from the same cube;
+    // the coach commits a turn only when the child confirms it.
+    function stopDemo() {
+      if (!demo) return;
+      clearTimeout(demo.timer);
+      cancelAnimationFrame(demo.frame);
+      demo.guides.forEach(function (el) { el.remove(); });
+      demo = null;
+      built.cubies.forEach(function (c) { c.el.style.transform = base(c.pos); });
+      built.cube.classList.remove('demonstrating', 'demo-reset');
+      delete host.dataset.demoPhase;
+      repaint(null);
+    }
+
+    function demonstrate(move) {
+      stopDemo();
+      var g = geoOf(move);
+      if (!g || busy) return;
+      var group = built.cubies.filter(function (c) { return layerHit(c.pos, g); });
+      var run = { timer: 0, frame: 0, guides: [] };
+      demo = run;
+      built.cube.classList.add('demonstrating');
+      repaint(g);
+      addTurnGuides(g, built.cube).forEach(function (el) { run.guides.push(el); });
+      function later(fn, ms) {
+        run.timer = setTimeout(function () { if (demo === run) fn(); }, ms);
+      }
+      function phase(name) { host.dataset.demoPhase = name; }
+      function reset() {
+        phase('reset');
+        // Hide the reset rather than teaching an extra turn in reverse.
+        built.cube.classList.add('demo-reset');
+        later(function () {
+          group.forEach(function (c) { c.el.style.transform = base(c.pos); });
+          later(function () {
+            built.cube.classList.remove('demo-reset');
+            begin();
+          }, 80);
+        }, 180);
+      }
+      function turn(quarter) {
+        phase('turn');
+        var start = performance.now(), duration = 1000;
+        var fn = g.axis === 'x' ? 'rotateX' : g.axis === 'y' ? 'rotateY' : 'rotateZ';
+        run.frame = requestAnimationFrame(function frame(now) {
+          if (demo !== run) return;
+          var t = Math.min(1, (now - start) / duration);
+          var ease = t * t * (3 - 2 * t);
+          var angle = 90 * (quarter + ease) * g.d * CSS_SIGN[g.axis];
+          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+          if (t < 1) run.frame = requestAnimationFrame(frame);
+          else if (quarter + 1 < g.quarters) later(function () { turn(quarter + 1); }, 300);
+          else { phase('hold'); later(reset, 950); }
+        });
+      }
+      function begin() {
+        phase('focus');
+        later(function () {
+          if (document.hidden) { begin(); return; }
+          turn(0);
+        }, 750);
+      }
+      phase('focus');
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) begin();
     }
 
     /* Painting is always on: with a mouse, left paints a sticker (and keeps
@@ -317,12 +386,14 @@
 
     repaint(null); applyView(); fit();
     return {
-      set: function (s) { state = new Int8Array(s); repaint(null); },
+      set: function (s) { stopDemo(); state = new Int8Array(s); repaint(null); },
       get: function () { return state; },
       play: play,
+      demonstrate: demonstrate,
+      stopDemo: stopDemo,
       busy: function () { return busy; },
-      colours: function (fc) { faceColour = fc; repaint(null); },
-      setNames: function (arr) { if (arr !== names) clearHints(); names = arr; repaint(null); },
+      colours: function (fc) { stopDemo(); faceColour = fc; repaint(null); },
+      setNames: function (arr) { stopDemo(); if (arr !== names) clearHints(); names = arr; repaint(null); },
       showMissing: showMissing,
       onSticker: function (cb) { onSticker = cb; },
       onView: function (cb) { onView = cb; cb(view.rx, view.ry); },
@@ -339,6 +410,44 @@
       angles: function () { return { rx: view.rx, ry: view.ry }; },
       look: look
     };
+  }
+
+  // Place cues in the cube's own 3D scene, so they stay on the right row or
+  // column when dragged. Four strip arrows cover the sides around a turn;
+  // the fifth cue shows clockwise/counterclockwise on the turning face.
+  function addTurnGuides(g, cube) {
+    var guides = [];
+    function add(face, path, transform) {
+      var el = document.createElement('div');
+      el.className = 'turn-guide';
+      el.setAttribute('aria-hidden', 'true');
+      el.style.transform = faceTransform(face, CUBE / 2 + 5);
+      el.innerHTML = '<svg viewBox="-66 -66 132 132"><g transform="' + transform + '">' +
+        '<path class="turn-guide-shadow" d="' + path + '"/>' +
+        '<path class="turn-guide-ink" d="' + path + '"/></g></svg>';
+      cube.appendChild(el);
+      guides.push(el);
+    }
+    var ring = 'M0 -42 A42 42 0 1 1 -42 0 M-53 12 L-42 0 L-30 10';
+    add(g.face, ring, g.prime ? 'scale(-1 1)' : '');
+    L.FACE_ORDER.forEach(function (face) {
+      var cells = L.FACELETS.filter(function (f) { return f.face === face && layerHit(f.pos, g); });
+      if (cells.length !== 3) return;
+      var middle = cells[1], p = middle.pos;
+      // Model rotation uses -d. Project its tangent onto this face's own
+      // horizontal and vertical axes, taken from the facelet grid itself.
+      var velocity = g.axis === 'x' ? [0, g.d * p[2], -g.d * p[1]]
+        : g.axis === 'y' ? [-g.d * p[2], 0, g.d * p[0]]
+          : [g.d * p[1], -g.d * p[0], 0];
+      var grid = L.FACELETS.slice(L.FACE_INDEX[face] * 9, L.FACE_INDEX[face] * 9 + 9);
+      function along(a, b) {
+        return velocity.reduce(function (sum, v, i) { return sum + v * (grid[b].pos[i] - grid[a].pos[i]); }, 0);
+      }
+      var angle = Math.atan2(along(4, 7), along(4, 5)) * 180 / Math.PI;
+      add(face, 'M-32 0 H30 M18 -12 L30 0 L18 12',
+        'translate(' + ((middle.col - 1) * S) + ' ' + ((middle.row - 1) * S) + ') rotate(' + angle + ')');
+    });
+    return guides;
   }
 
   /* ---------------- still figure with an arrow ----------------
