@@ -610,13 +610,18 @@
   function previewTurn() {
     cubeView.set(L.applyMoves(session.start, session.moves.slice(0, session.cursor)));
     render();
-    cubeView.demonstrate(session.moves[session.cursor]);
+    if (!document.hidden) cubeView.demonstrate(session.moves[session.cursor]);
   }
 
   /** Only the child's confirmation advances the solution, never a demo repeat. */
-  function step(dir) {
-    if (!session || $('screen-coach').hidden) return;
-    session.cursor = Math.max(0, session.cursor + dir);
+  async function step(dir) {
+    if (!session || $('screen-coach').hidden || cubeView.busy()) return;
+    if (dir < 0 && session.cursor === 0) return;
+    var move = dir > 0 ? session.moves[session.cursor] : L.inverse([session.moves[session.cursor - 1]])[0];
+    var turn = cubeView.play(move);
+    render();
+    await turn;
+    session.cursor += dir;
     if (session.cursor >= session.moves.length) {
       cubeView.set(L.applyMoves(session.start, session.moves));
       finish();
@@ -625,7 +630,7 @@
     previewTurn();
   }
   function replay() {
-    if (session && !$('screen-coach').hidden) previewTurn();
+    if (session && !$('screen-coach').hidden && !cubeView.busy()) previewTurn();
   }
 
   function render() {
@@ -644,7 +649,9 @@
     var active = track.children[i];
     // Scroll only the number strip; advancing a move must not scroll the page.
     track.scrollLeft = active.offsetLeft + active.offsetWidth / 2 - track.clientWidth / 2;
-    $('coach-back').disabled = i === 0;
+    $('coach-back').disabled = i === 0 || cubeView.busy();
+    $('coach-next').disabled = cubeView.busy();
+    $('coach-again').disabled = cubeView.busy();
   }
 
   function finish() {

@@ -226,6 +226,10 @@
     }
 
     function play(move, ms) {
+      if (busy) return Promise.resolve();
+      // Continue a matching preview from its visible angle instead of snapping
+      // the layer back to the start when the child confirms the turn.
+      var startAngle = demo && demo.move === move ? demo.angle : 0;
       stopDemo();
       return new Promise(function (done) {
         var g = geoOf(move);
@@ -234,10 +238,12 @@
         var target = 90 * g.quarters * g.d * CSS_SIGN[g.axis];
         var fn = g.axis === 'x' ? 'rotateX' : g.axis === 'y' ? 'rotateY' : 'rotateZ';
         var group = built.cubies.filter(function (c) { return layerHit(c.pos, g); });
+        group.forEach(function (c) { c.el.style.transform = fn + '(' + startAngle + 'deg) ' + base(c.pos); });
         repaint(g);
         var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var dur = reduce ? 1 : (ms || 620) * g.quarters, t0 = performance.now();
-        var settled = false;
+        var remaining = Math.abs(target - startAngle) / 90;
+        var dur = reduce ? 1 : Math.max(1, (ms || 620) * remaining), t0 = performance.now();
+        var settled = false, frame = 0;
         /* A hidden tab stops serving animation frames, so the turn also has a
          * timer behind it — otherwise the lesson would wait for ever. */
         var safety = setTimeout(finish, dur + 400);
@@ -245,18 +251,20 @@
           if (settled) return;
           settled = true;
           clearTimeout(safety);
+          cancelAnimationFrame(frame);
           state = L.applyMoves(state, [move]);
           group.forEach(function (c) { c.el.style.transform = base(c.pos); });
           repaint(null);
           busy = false;
           done();
         }
-        requestAnimationFrame(function frame(now) {
+        frame = requestAnimationFrame(function animate(now) {
           if (settled) return;
           var t = Math.min(1, (now - t0) / dur);
           var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-          group.forEach(function (c) { c.el.style.transform = fn + '(' + (target * e) + 'deg) ' + base(c.pos); });
-          if (t < 1) requestAnimationFrame(frame);
+          var angle = startAngle + (target - startAngle) * e;
+          group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
+          if (t < 1) frame = requestAnimationFrame(animate);
           else finish();
         });
       });
@@ -281,7 +289,7 @@
       var g = geoOf(move);
       if (!g || busy) return;
       var group = built.cubies.filter(function (c) { return layerHit(c.pos, g); });
-      var run = { timer: 0, frame: 0, guides: [] };
+      var run = { timer: 0, frame: 0, guides: [], move: move, angle: 0 };
       demo = run;
       built.cube.classList.add('demonstrating');
       repaint(g);
@@ -296,6 +304,7 @@
         built.cube.classList.add('demo-reset');
         later(function () {
           group.forEach(function (c) { c.el.style.transform = base(c.pos); });
+          run.angle = 0;
           later(function () {
             built.cube.classList.remove('demo-reset');
             begin();
@@ -311,6 +320,7 @@
           var t = Math.min(1, (now - start) / duration);
           var ease = t * t * (3 - 2 * t);
           var angle = 90 * (quarter + ease) * g.d * CSS_SIGN[g.axis];
+          run.angle = angle;
           group.forEach(function (c) { c.el.style.transform = fn + '(' + angle + 'deg) ' + base(c.pos); });
           if (t < 1) run.frame = requestAnimationFrame(frame);
           else if (quarter + 1 < g.quarters) later(function () { turn(quarter + 1); }, 300);
