@@ -85,7 +85,7 @@
     'net.err.stuck.why': 'Lỗi của mình chứ không phải của bạn. Xem lại màu một lượt rồi thử lại nhé.',
 
     'coach.step': 'Bước {n} trên 7 · nước {i} trên {of} · còn {left} nước nữa',
-    'coach.progress': 'Nước {current} / {total}',
+    'coach.progress': 'Bước {current} / {total}',
     'coach.target.cross': 'Tạo dấu cộng màu {base}',
     'coach.target.corners': 'Hoàn thành tầng màu {base}',
     'coach.target.belt': 'Hoàn thành tầng giữa',
