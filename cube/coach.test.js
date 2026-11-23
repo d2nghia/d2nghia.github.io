@@ -106,14 +106,14 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
     clearInterval() {}, requestAnimationFrame: fn => schedule(fn, framesPaused ? 1000000 : 16),
     cancelAnimationFrame: id => tasks.delete(id),
     localStorage: {
-      getItem(key) { if (storageBlocked) throw new Error('Storage unavailable'); return persistence ? storage.get(key) || null : null; },
+      getItem(key) { if (storageBlocked) throw new Error('Storage unavailable'); return storage.get(key) || null; },
       setItem(key, value) {
         if (storageBlocked) throw new Error('Storage unavailable');
-        assert.ok(persistence, 'Test cubes must not be saved'); storage.set(key, value);
+        storage.set(key, value);
       },
       removeItem(key) {
         if (storageBlocked) throw new Error('Storage unavailable');
-        assert.ok(persistence, 'Test cubes must not erase saved cubes'); storage.delete(key);
+        storage.delete(key);
       }
     }
   });
@@ -977,27 +977,40 @@ test('opening another progress fragment during an animation waits safely and rep
   assert.equal(f.storage.get(P.STORE), incoming.window.location.hash);
 });
 
-test('the random-colour testing entry point does not overwrite a saved lesson', () => {
+test('autofill generates a new cube and saves a URL that restores it instead of generating again', () => {
   const saved = fixture({ app: true, persistence: true, scramble: ['U2'] });
   const storage = new Map(saved.storage), before = storage.get(P.STORE);
-  const f = fixture({ app: true, persistence: true, storage, search: '?autofill=random', scramble: ['R'] });
-  assert.equal(f.window.location.hash, '');
-  assert.equal(storage.get(P.STORE), before);
+  const f = fixture({ app: true, persistence: true, autoSolve: false, storage,
+    search: '?autofill=random', scramble: ['R'] });
+  const hash = f.window.location.hash, progress = P.decode(hash);
+  assert.equal(progress.view, 'capture');
+  assert.equal(f.window.location.search, '', 'Consume the generate-once parameter');
+  assert.equal(storage.get(P.STORE), hash);
+  assert.notEqual(hash, before);
+  const expected = Array.from(L.applyMoves(L.solvedState(), ['R']), face => ['white', 'red', 'green', 'yellow', 'orange', 'blue'][face]);
+  assert.deepEqual(progress.names, expected);
+  assert.deepEqual(JSON.parse(storage.get('cube-coach/cube2')).names, expected);
+  for (const config of [{ hash }, { storage }]) {
+    const restored = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['F'], ...config });
+    assert.equal(restored.get('screen-capture').hidden, false);
+    assert.equal(restored.window.location.hash, hash);
+    assert.deepEqual(P.decode(restored.window.location.hash).names, expected);
+  }
 });
 
-test('autofill overrides shared progress and malformed fragments without changing saved progress', () => {
+test('a new autofill request replaces old fragments with its own state and preserves unrelated query parameters', () => {
   const saved = fixture({ app: true, persistence: true, scramble: ['U2'] });
   const partial = P.encode({ view: 'capture', names: Array(54).fill(null) });
   const expected = L.applyMoves(L.solvedState(), ['R']);
   const colours = ['white', 'red', 'green', 'yellow', 'orange', 'blue'];
   for (const hash of [saved.window.location.hash, partial, '#v=1&cube=broken']) {
-    const storage = new Map(saved.storage), before = [...storage];
+    const storage = new Map(saved.storage);
     const f = fixture({ app: true, persistence: true, autoSolve: false, storage,
-      search: '?autofill=random', hash, scramble: ['R'] });
+      search: '?autofill=random&example=kept', hash, scramble: ['R'] });
     assert.equal(f.get('screen-capture').hidden, false);
     assert.equal(f.get('progress-error').hidden, true);
-    assert.equal(f.window.location.hash, '');
-    assert.equal(f.window.location.search, '?autofill=random');
+    assert.equal(P.decode(f.window.location.hash).view, 'capture');
+    assert.equal(f.window.location.search, '?example=kept');
     const stickers = f.get('cap-cube').children[0].children
       .filter(el => el.className === 'cubie').flatMap(el => el.children)
       .filter(el => el.dataset.facelet != null);
@@ -1005,12 +1018,47 @@ test('autofill overrides shared progress and malformed fragments without changin
     for (const sticker of stickers) {
       assert.equal(sticker.style.background, f.window.CubeView.HEX[colours[expected[sticker.dataset.facelet]]]);
     }
-    assert.deepEqual([...storage], before);
+    assert.equal(storage.get(P.STORE), f.window.location.hash);
     f.window.location.hash = saved.window.location.hash;
     f.windowListeners.hashchange.forEach(fn => fn());
-    assert.equal(f.get('screen-capture').hidden, false, 'Testing must not switch into a saved lesson');
-    f.get('cap-solve').onclick();
-    assert.equal(f.solution.ok, true);
-    assert.deepEqual([...storage], before);
+    assert.equal(f.get('screen-coach').hidden, false, 'After generation, shared-state navigation works normally');
+    assert.deepEqual(f.coach.get(), saved.coach.get());
   }
+});
+
+test('an autofilled lesson can be solved, advanced, refreshed, and shared at the same step', async () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false, search: '?autofill=random', scramble: ['U2'] });
+  f.get('cap-solve').onclick();
+  await f.advance();
+  assert.equal(P.decode(f.window.location.hash).session.cursor, 1);
+  for (const config of [{ hash: f.window.location.hash }, { storage: new Map(f.storage) }]) {
+    const restored = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['F'], ...config });
+    assert.equal(restored.solution, undefined, 'Restore the saved lesson without generating or solving another cube');
+    assert.deepEqual(restored.coach.get(), f.coach.get());
+    assert.equal(restored.get('coach-progress').textContent, f.get('coach-progress').textContent);
+  }
+  await f.advance();
+  const completed = fixture({ app: true, persistence: true, autoSolve: false, hash: f.window.location.hash });
+  assert.equal(completed.get('done-again').hidden, false);
+  assert.equal(L.isSolved(completed.coach.get()), true);
+});
+
+test('clearing an autofilled cube stays cleared after reload, while a new autofill URL generates again', () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false, search: '?autofill=random', scramble: ['R'] });
+  f.get('cap-clear').onclick();
+  const restored = fixture({ app: true, persistence: true, autoSolve: false, hash: f.window.location.hash });
+  assert.ok(P.decode(restored.window.location.hash).names.every(name => name === null));
+  const fresh = fixture({ app: true, persistence: true, autoSolve: false, storage: f.storage,
+    search: '?autofill=random', scramble: ['F'] });
+  assert.ok(P.decode(fresh.window.location.hash).names.every(Boolean));
+  assert.notEqual(fresh.window.location.hash, f.window.location.hash);
+});
+
+test('autofill still produces a shareable URL when local storage is unavailable', () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false, storageBlocked: true,
+    search: '?autofill=random', scramble: ['R'] });
+  assert.equal(f.window.location.search, '');
+  assert.equal(P.decode(f.window.location.hash).view, 'capture');
+  const shared = fixture({ app: true, persistence: true, autoSolve: false, hash: f.window.location.hash });
+  assert.equal(shared.window.location.hash, f.window.location.hash);
 });

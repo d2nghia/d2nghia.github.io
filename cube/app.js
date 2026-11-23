@@ -10,8 +10,8 @@
   'use strict';
   var L = window.CubeLib;
   var P = window.CubeProgress;
-  // Hidden testing entry point: index.html?autofill=random.
-  var randomTest = new URLSearchParams(window.location.search).get('autofill') === 'random';
+  // Generate once; the resulting progress URL restores this cube on reload.
+  var autofillRandom = new URLSearchParams(window.location.search).get('autofill') === 'random';
 
   var COLORS = ['white', 'yellow', 'green', 'blue', 'red', 'orange'];
   var HEX = {
@@ -131,7 +131,6 @@
    * is not theirs. */
   var STORE = 'cube-coach/cube2';
   function rememberCube() {
-    if (randomTest) return;
     try { localStorage.setItem(STORE, JSON.stringify({ names: names, at: Date.now() })); }
     catch (e) { /* private window, or storage turned off */ }
     saveProgress();
@@ -145,20 +144,24 @@
     } catch (e) { return null; }
   }
   function forgetCube() {
-    if (randomTest) return;
     try { localStorage.removeItem(STORE); } catch (e) { /* nothing to do */ }
   }
 
   function saveProgress(cursor) {
-    if (randomTest || restoringProgress) return;
+    if (restoringProgress) return;
     var progress;
     if (currentScreen === 'coach' && session) progress = P.fromSession(session, cursor);
     else if (currentScreen === 'capture' || currentScreen === 'check') progress = { view: currentScreen, names: names };
     else return;
     var hash = P.encode(progress);
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('autofill') === 'random') params.delete('autofill');
+    var query = params.toString(), search = query ? '?' + query : '';
     // Replacing the URL keeps Back from filling up with every sticker and turn.
     try {
-      if (window.location.hash !== hash) window.history.replaceState(null, '', window.location.pathname + window.location.search + hash);
+      if (window.location.hash !== hash || window.location.search !== search) {
+        window.history.replaceState(null, '', window.location.pathname + search + hash);
+      }
     }
     catch (e) { /* a restricted frame can still save progress locally */ }
     try { localStorage.setItem(P.STORE, hash); }
@@ -206,11 +209,11 @@
     return left;
   }
 
-  function startCapture(fresh, initialNames) {
+  function startCapture(fresh, initialNames, randomFill) {
     show('capture');
     if (initialNames) names = initialNames.slice();
     else if (fresh) { forgetCube(); names = new Array(54).fill(null); }
-    else if (randomTest) {
+    else if (randomFill) {
       // Legal turns keep the random colours solvable, with nine of each colour.
       var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
       names = Array.from(state, function (face) { return DEFAULT_CENTRES[L.FACE_ORDER[face]]; });
@@ -233,7 +236,7 @@
     setBrush(capPalette.get());
     paintModel();
     var done = 6 - facesLeft();
-    if (!fresh && !randomTest && done) {
+    if (!fresh && !randomFill && done) {
       $('cap-msg').hidden = false;
       $('cap-msg').className = 'small center kept-line';
       $('cap-msg').textContent = done === 6 ? t('cap.kept.all') : t('cap.kept.some', { n: done });
@@ -932,18 +935,11 @@
     else replay();
   });
   window.addEventListener('hashchange', function () {
-    if (randomTest) return;
     var progress = P.decode(window.location.hash);
     if (!progress) return;
     if (cubeView && cubeView.busy()) pendingProgress = progress;
     else restoreProgress(progress);
   });
-  if (randomTest) {
-    // Autofill is an explicit request for a new testing cube, even if the
-    // address bar still contains progress from a real cube.
-    try {
-      if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    } catch (e) { /* testing still works when the URL cannot be updated */ }
-    startCapture(false);
-  } else restoreStartup();
+  if (autofillRandom) startCapture(false, null, true);
+  else restoreStartup();
 })();
