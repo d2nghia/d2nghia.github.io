@@ -6,11 +6,13 @@ const path = require('node:path');
 const vm = require('node:vm');
 const L = require('./solver.js');
 const K = require('./capture.js');
+const P = require('./progress.js');
 const langContext = { module: { exports: {} }, localStorage: { getItem: () => null } };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'lang.js'), 'utf8'), langContext);
 const LANG = langContext.module.exports;
 
-function fixture({ app = false, reducedMotion = false, solved = false, scramble } = {}) {
+function fixture({ app = false, reducedMotion = false, solved = false, scramble,
+  persistence = false, hash = '', storage = new Map(), storageBlocked = false, autoSolve = true, search } = {}) {
   let now = 0, serial = 0, framesPaused = false;
   const tasks = new Map(), listeners = {}, nodes = new Map(), windowListeners = {}, resizeObservers = [];
   function schedule(fn, delay) {
@@ -68,9 +70,9 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     return el;
   }
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  for (const [, id] of html.matchAll(/id="([^"]+)"/g)) {
+  for (const [tag, id] of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)) {
     const el = element(); el.id = id;
-    el.hidden = id.startsWith('screen-') && id !== 'screen-start';
+    el.hidden = /\shidden(?:\s|>)/.test(tag);
     nodes.set(id, el);
   }
   const get = id => { assert.ok(nodes.has(id), 'Missing HTML element: ' + id); return nodes.get(id); };
@@ -81,14 +83,21 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     addEventListener(name, fn) { listeners[name] = fn; }
   };
   const window = {
-    CubeLib: { ...L }, CubeCapture: K, location: { search: '?autofill=random' },
+    CubeLib: { ...L }, CubeCapture: K,
+    location: { pathname: '/cube/index.html', search: search ?? (persistence ? '' : '?autofill=random'), hash },
     innerHeight: 900, scrollTo() {},
     addEventListener(name, fn) { (windowListeners[name] ||= []).push(fn); },
     matchMedia: () => ({ matches: reducedMotion }),
     CubeLang: { t: LANG.t, colour: LANG.colour, apply() {}, onChange(fn) { this.change = fn; }, toggle() { this.change(); } }
   };
+  const replacements = [];
+  window.history = { replaceState(state, title, url) {
+    replacements.push(url);
+    const parsed = new URL(url, 'https://example.test');
+    Object.assign(window.location, { pathname: parsed.pathname, search: parsed.search, hash: parsed.hash });
+  } };
   const context = vm.createContext({
-    window, document, URLSearchParams, Int8Array, performance: { now: () => now },
+    window, self: window, document, URLSearchParams, Int8Array, performance: { now: () => now },
     ResizeObserver: class {
       constructor(callback) { this.callback = callback; resizeObservers.push(this); }
       observe(host) { this.host = host; }
@@ -96,17 +105,32 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     setTimeout: schedule, clearTimeout: id => tasks.delete(id),
     clearInterval() {}, requestAnimationFrame: fn => schedule(fn, framesPaused ? 1000000 : 16),
     cancelAnimationFrame: id => tasks.delete(id),
-    localStorage: { getItem: () => null, setItem() { assert.fail('Test cubes must not be saved'); }, removeItem() { assert.fail('Test cubes must not erase saved cubes'); } }
+    localStorage: {
+      getItem(key) { if (storageBlocked) throw new Error('Storage unavailable'); return persistence ? storage.get(key) || null : null; },
+      setItem(key, value) {
+        if (storageBlocked) throw new Error('Storage unavailable');
+        assert.ok(persistence, 'Test cubes must not be saved'); storage.set(key, value);
+      },
+      removeItem(key) {
+        if (storageBlocked) throw new Error('Storage unavailable');
+        assert.ok(persistence, 'Test cubes must not erase saved cubes'); storage.delete(key);
+      }
+    }
   });
   const run = file => vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
+  run('progress.js');
   run('cubeview.js');
-  let coach, initial, solution, pendingMove, faceColours;
+  let coach, initial, solution, pendingMove, faceColours, paintSticker;
   if (app) {
     if (solved) window.CubeLib.randomScramble = () => [];
     else if (scramble) window.CubeLib.randomScramble = () => scramble;
     const create = window.CubeView.create;
     window.CubeView.create = function (host, colours) {
       const view = create(host, colours);
+      if (host.id === 'cap-cube') {
+        const onSticker = view.onSticker;
+        view.onSticker = function (cb) { paintSticker = cb; onSticker(cb); };
+      }
       if (host.id === 'coach-cube') {
         coach = view;
         faceColours = colours.slice();
@@ -121,7 +145,10 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
       return solution;
     };
     run('app.js');
-    get('cap-solve').onclick();
+    if (autoSolve && get('screen-coach').hidden) {
+      if (!get('screen-capture').hidden) get('cap-solve').onclick();
+      else get('go-demo').onclick();
+    }
   }
   async function settle(ms = 2000) {
     tick(ms);
@@ -132,6 +159,11 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble 
     await settle();
   }
   return { window, document, listeners, windowListeners, resizeObservers, get, tick, tasks, settle, advance,
+    storage, replacements,
+    paint(index, colour) {
+      get('cap-palette').children.find(button => button.title === colour).onclick();
+      paintSticker(index);
+    },
     pauseFrames() { framesPaused = true; },
     replay() { listeners.keydown({ key: ' ', target: get('coach-cube'), preventDefault() {} }); },
     get coach() { return coach; }, get initial() { return initial; }, get solution() { return solution; },
@@ -820,4 +852,135 @@ test('resizing the cube stage scales the cube and arrows together without resett
   host.clientWidth = 250;
   observer.callback();
   assert.equal(cube.style.scale, 250 / 230, 'Fit within the shorter stage dimension');
+});
+
+test('every selected step survives reload and shared URLs restore the exact lesson without solving again', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: L.parse('R U F L D B') });
+  const track = f.get('coach-move-track'), total = f.moves.length;
+  for (const index of [1, Math.floor(total / 2), total, total - 1, 0]) {
+    track.children[index].onclick({ detail: 0 });
+    const hash = f.window.location.hash;
+    assert.equal(f.storage.get(P.STORE), hash);
+    assert.equal(new URLSearchParams(hash.slice(1)).get('step'), String(index + 1));
+    const shared = fixture({ app: true, persistence: true, hash, autoSolve: false });
+    const reloaded = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+    for (const restored of [shared, reloaded]) {
+      assert.equal(restored.get('screen-coach').hidden, false);
+      assert.equal(restored.solution, undefined, 'Saved moves must survive future solver changes');
+      assert.deepEqual(restored.coach.get(), L.applyMoves(f.initial, f.moves.slice(0, index)));
+      assert.equal(restored.get('coach-progress').textContent, LANG.t('coach.progress', { current: index + 1, total: total + 1 }));
+      assert.equal(restored.get('coach-goal').textContent, f.get('coach-goal').textContent);
+      assert.equal(restored.get('done-again').hidden, index !== total);
+    }
+  }
+  assert.ok(f.replacements.length > 0);
+  assert.equal(f.window.location.pathname, '/cube/index.html');
+});
+
+test('confirmations and undo are saved before their animations finish', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  f.get('coach-next').onclick();
+  const next = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+  assert.deepEqual(next.coach.get(), L.applyMoves(f.initial, ['U']));
+  assert.equal(new URLSearchParams(next.window.location.hash.slice(1)).get('step'), '2');
+  await f.settle();
+  const stable = f.window.location.hash;
+  f.tick(15000);
+  assert.equal(f.window.location.hash, stable, 'Repeating previews must not advance saved progress');
+  f.get('coach-back').onclick();
+  const back = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+  assert.deepEqual(back.coach.get(), f.initial);
+  assert.equal(new URLSearchParams(back.window.location.hash.slice(1)).get('step'), '1');
+});
+
+test('painting and clearing capture colours update both the URL and local storage immediately', () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false });
+  f.get('go-camera').onclick();
+  f.paint(0, 'red'); f.paint(4, 'white'); f.paint(18, 'blue');
+  const hash = f.window.location.hash, saved = P.decode(hash);
+  assert.equal(saved.view, 'capture');
+  assert.equal(saved.names[0], 'red'); assert.equal(saved.names[18], 'blue');
+  assert.equal(saved.names[1], null);
+  assert.equal(f.storage.get(P.STORE), hash);
+  for (const config of [{ hash }, { storage: new Map(f.storage) }]) {
+    const restored = fixture({ app: true, persistence: true, autoSolve: false, ...config });
+    assert.equal(restored.get('screen-capture').hidden, false);
+    assert.deepEqual(P.decode(restored.window.location.hash).names, saved.names);
+  }
+  f.get('cap-clear').onclick();
+  assert.ok(P.decode(f.window.location.hash).names.every(name => name === null));
+  assert.ok(P.decode(f.storage.get(P.STORE)).names.every(name => name === null));
+});
+
+test('manual colour edits are shared and restored in the manual editor', () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false });
+  f.get('go-manual').onclick();
+  f.get('net-palette').children.find(button => button.title === 'orange').onclick();
+  f.get('net').children[0].children[1].children[0].onclick();
+  const saved = P.decode(f.window.location.hash);
+  assert.equal(saved.view, 'check');
+  assert.equal(saved.names[0], 'orange');
+  assert.equal(saved.names[4], 'white');
+  const restored = fixture({ app: true, persistence: true, hash: f.window.location.hash, autoSolve: false });
+  assert.equal(restored.get('screen-check').hidden, false);
+  assert.deepEqual(P.decode(restored.window.location.hash).names, saved.names);
+});
+
+test('a shared link wins over local progress, and damaged links do not overwrite the local lesson', () => {
+  const first = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  first.get('coach-move-track').children[1].onclick({ detail: 0 });
+  const other = fixture({ app: true, persistence: true, scramble: L.parse('R U F') });
+  const storage = new Map(other.storage), hash = first.window.location.hash;
+  const shared = fixture({ app: true, persistence: true, storage, hash, autoSolve: false });
+  assert.deepEqual(shared.coach.get(), first.coach.get());
+  assert.equal(storage.get(P.STORE), hash);
+  const broken = '#v=1&cube=broken&view=coach&step=200';
+  const invalid = fixture({ app: true, persistence: true, storage, hash: broken, autoSolve: false });
+  assert.equal(invalid.get('screen-start').hidden, false);
+  assert.equal(invalid.get('progress-error').hidden, false);
+  assert.equal(storage.get(P.STORE), hash);
+  assert.equal(invalid.replacements.length, 0);
+});
+
+test('valid progress links still work with blocked storage, and local saving survives a blocked History API', () => {
+  const f = fixture({ app: true, persistence: true, storageBlocked: true, scramble: ['U2'] });
+  f.get('coach-move-track').children[1].onclick({ detail: 0 });
+  const restored = fixture({ app: true, persistence: true, storageBlocked: true, hash: f.window.location.hash, autoSolve: false });
+  assert.deepEqual(restored.coach.get(), f.coach.get());
+  const noHistory = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['U2'] });
+  noHistory.window.history.replaceState = () => { throw new Error('History blocked'); };
+  noHistory.get('go-demo').onclick();
+  assert.equal(P.decode(noHistory.storage.get(P.STORE)).view, 'coach');
+});
+
+test('older saved colours migrate automatically and corrupt local progress does not break startup', () => {
+  const names = Array(54).fill(null); names[4] = 'yellow'; names[9] = 'orange';
+  const storage = new Map([['cube-coach/cube2', JSON.stringify({ names })], [P.STORE, '{invalid}']]);
+  const migrated = fixture({ app: true, persistence: true, storage, autoSolve: false });
+  assert.equal(migrated.get('screen-capture').hidden, false);
+  assert.deepEqual(P.decode(storage.get(P.STORE)).names, names);
+  const broken = fixture({ app: true, persistence: true, storage: new Map([[P.STORE, 'broken']]), autoSolve: false });
+  assert.equal(broken.get('screen-start').hidden, false);
+});
+
+test('opening another progress fragment during an animation waits safely and replaces the old lesson', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: L.parse('R U F') });
+  const incoming = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  incoming.get('coach-move-track').children[1].onclick({ detail: 0 });
+  f.get('coach-next').onclick();
+  f.window.location.hash = incoming.window.location.hash;
+  f.windowListeners.hashchange.forEach(fn => fn());
+  assert.equal(f.coach.busy(), true);
+  await f.settle();
+  assert.deepEqual(f.coach.get(), incoming.coach.get());
+  assert.equal(f.get('coach-progress').textContent, incoming.get('coach-progress').textContent);
+  assert.equal(f.storage.get(P.STORE), incoming.window.location.hash);
+});
+
+test('the random-colour testing entry point does not overwrite a saved lesson', () => {
+  const saved = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  const storage = new Map(saved.storage), before = storage.get(P.STORE);
+  const f = fixture({ app: true, persistence: true, storage, search: '?autofill=random', scramble: ['R'] });
+  assert.equal(f.window.location.hash, '');
+  assert.equal(storage.get(P.STORE), before);
 });

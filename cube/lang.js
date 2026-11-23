@@ -85,6 +85,7 @@
     'net.err.stuck.why': 'Lỗi của mình chứ không phải của bạn. Xem lại màu một lượt rồi thử lại nhé.',
 
     'coach.step': 'Bước {n} trên 7 · nước {i} trên {of} · còn {left} nước nữa',
+    'progress.invalid': 'Không mở được liên kết tiến độ này. Tiến độ đã lưu trên máy vẫn được giữ nguyên.',
     'coach.progress': 'Bước {current} / {total}',
     'coach.steps': 'Các bước',
     'coach.resize': 'Kéo góc để đổi kích thước (hoặc dùng phím mũi tên)',
@@ -280,6 +281,7 @@
     'net.err.stuck.why': 'That is my fault, not yours. Check the colours once more and try again.',
 
     'coach.step': 'Step {n} of 7 · turn {i} of {of} · {left} turns left in all',
+    'progress.invalid': 'This progress link could not be opened. Your saved progress has not been changed.',
     'coach.progress': 'Step {current} / {total}',
     'coach.steps': 'Steps',
     'coach.resize': 'Drag the corner to resize (or use the arrow keys)',

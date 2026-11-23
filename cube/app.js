@@ -9,6 +9,7 @@
 (function () {
   'use strict';
   var L = window.CubeLib;
+  var P = window.CubeProgress;
   // Hidden testing entry point: index.html?autofill=random.
   var randomTest = new URLSearchParams(window.location.search).get('autofill') === 'random';
 
@@ -23,7 +24,9 @@
   var LANG = window.CubeLang;
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
+  var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
   function show(screen) {
+    currentScreen = screen;
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
@@ -131,6 +134,7 @@
     if (randomTest) return;
     try { localStorage.setItem(STORE, JSON.stringify({ names: names, at: Date.now() })); }
     catch (e) { /* private window, or storage turned off */ }
+    saveProgress();
   }
   function rememberedCube() {
     try {
@@ -144,6 +148,57 @@
     if (randomTest) return;
     try { localStorage.removeItem(STORE); } catch (e) { /* nothing to do */ }
   }
+
+  function saveProgress(cursor) {
+    if (randomTest || restoringProgress) return;
+    var progress;
+    if (currentScreen === 'coach' && session) progress = P.fromSession(session, cursor);
+    else if (currentScreen === 'capture' || currentScreen === 'check') progress = { view: currentScreen, names: names };
+    else return;
+    var hash = P.encode(progress);
+    // Replacing the URL keeps Back from filling up with every sticker and turn.
+    try {
+      if (window.location.hash !== hash) window.history.replaceState(null, '', window.location.pathname + window.location.search + hash);
+    }
+    catch (e) { /* a restricted frame can still save progress locally */ }
+    try { localStorage.setItem(P.STORE, hash); }
+    catch (e) { /* the shareable URL still works when storage is unavailable */ }
+  }
+
+  function restoreProgress(progress) {
+    restoringProgress = true;
+    try {
+      stopCamera();
+      names = progress.names.slice();
+      session = progress.session || null;
+      if (progress.view === 'coach') startCoach(session.cursor);
+      else if (progress.view === 'capture') startCapture(false, names);
+      else renderNet(t('net.title'), t('net.hint'));
+    } finally { restoringProgress = false; }
+    saveProgress();
+  }
+
+  function restoreStartup() {
+    var hash = window.location.hash || '';
+    if (hash) {
+      var shared = P.decode(hash);
+      if (shared) { restoreProgress(shared); return true; }
+      var params = new URLSearchParams(hash.slice(1));
+      if (params.has('v') || params.has('cube')) {
+        // Do not replace a saved lesson with a malformed or incomplete link.
+        $('progress-error').hidden = false;
+        return true;
+      }
+    }
+    if (randomTest) return false;
+    try {
+      var saved = P.decode(localStorage.getItem(P.STORE));
+      if (saved) { restoreProgress(saved); return true; }
+    } catch (e) { /* unavailable or damaged storage must not prevent starting */ }
+    var legacy = rememberedCube();
+    if (legacy) { restoreProgress({ view: 'capture', names: legacy }); return true; }
+    return false;
+  }
   function facesLeft() {
     var left = 0;
     for (var f = 0; f < 6; f++) {
@@ -152,9 +207,10 @@
     return left;
   }
 
-  function startCapture(fresh) {
+  function startCapture(fresh, initialNames) {
     show('capture');
-    if (fresh) { forgetCube(); names = new Array(54).fill(null); }
+    if (initialNames) names = initialNames.slice();
+    else if (fresh) { forgetCube(); names = new Array(54).fill(null); }
     else if (randomTest) {
       // Legal turns keep the random colours solvable, with nine of each colour.
       var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
@@ -503,10 +559,11 @@
       var base = L.FACE_ORDER.indexOf(f) * 9;
       netGrids[f] = makeGrid(g,
         function (i) { return names[base + i]; },
-        function (i) { names[base + i] = netPalette.get(); });
+        function (i) { names[base + i] = netPalette.get(); rememberCube(); });
     });
     if (!netPalette) netPalette = makePalette($('net-palette'), function () { }, 'white');
     show('check');
+    rememberCube();
   }
 
   /* ================= assemble, check, solve ================= */
@@ -606,10 +663,10 @@
     }
   }
 
-  function startCoach() {
+  function startCoach(cursor) {
     if (!cubeView) cubeView = window.CubeView.create($('coach-cube'), session.faceColour);
     cubeView.colours(session.faceColour);
-    session.cursor = 0;
+    session.cursor = cursor || 0;
     startCoachChrome();
     show('coach');
     previewTurn();
@@ -618,6 +675,7 @@
   function previewTurn() {
     cubeView.set(L.applyMoves(session.start, session.moves.slice(0, session.cursor)));
     render();
+    saveProgress();
     if (!document.hidden && session.cursor < session.moves.length) {
       cubeView.demonstrate(session.moves[session.cursor]);
     }
@@ -630,8 +688,17 @@
     if (dir > 0 && session.cursor === session.moves.length) return;
     var move = dir > 0 ? session.moves[session.cursor] : L.inverse([session.moves[session.cursor - 1]])[0];
     var turn = cubeView.play(move, 1200, { fromStart: true, hold: 300, animate: true });
+    // A confirmation represents a physical turn already made by the child.
+    // Reloading during its animation should not make them repeat that turn.
+    saveProgress(session.cursor + dir);
     render();
     await turn;
+    if (pendingProgress) {
+      var progress = pendingProgress;
+      pendingProgress = null;
+      restoreProgress(progress);
+      return;
+    }
     session.cursor += dir;
     previewTurn();
   }
@@ -865,5 +932,11 @@
     if (document.hidden) cubeView.stopDemo();
     else replay();
   });
-  if (randomTest) startCapture(false);
+  window.addEventListener('hashchange', function () {
+    var progress = P.decode(window.location.hash);
+    if (!progress) return;
+    if (cubeView && cubeView.busy()) pendingProgress = progress;
+    else restoreProgress(progress);
+  });
+  if (!restoreStartup() && randomTest) startCapture(false);
 })();
