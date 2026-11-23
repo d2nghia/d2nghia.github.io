@@ -190,7 +190,6 @@
         return true;
       }
     }
-    if (randomTest) return false;
     try {
       var saved = P.decode(localStorage.getItem(P.STORE));
       if (saved) { restoreProgress(saved); return true; }
@@ -933,10 +932,18 @@
     else replay();
   });
   window.addEventListener('hashchange', function () {
+    if (randomTest) return;
     var progress = P.decode(window.location.hash);
     if (!progress) return;
     if (cubeView && cubeView.busy()) pendingProgress = progress;
     else restoreProgress(progress);
   });
-  if (!restoreStartup() && randomTest) startCapture(false);
+  if (randomTest) {
+    // Autofill is an explicit request for a new testing cube, even if the
+    // address bar still contains progress from a real cube.
+    try {
+      if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } catch (e) { /* testing still works when the URL cannot be updated */ }
+    startCapture(false);
+  } else restoreStartup();
 })();

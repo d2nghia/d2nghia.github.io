@@ -984,3 +984,33 @@ test('the random-colour testing entry point does not overwrite a saved lesson', 
   assert.equal(f.window.location.hash, '');
   assert.equal(storage.get(P.STORE), before);
 });
+
+test('autofill overrides shared progress and malformed fragments without changing saved progress', () => {
+  const saved = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  const partial = P.encode({ view: 'capture', names: Array(54).fill(null) });
+  const expected = L.applyMoves(L.solvedState(), ['R']);
+  const colours = ['white', 'red', 'green', 'yellow', 'orange', 'blue'];
+  for (const hash of [saved.window.location.hash, partial, '#v=1&cube=broken']) {
+    const storage = new Map(saved.storage), before = [...storage];
+    const f = fixture({ app: true, persistence: true, autoSolve: false, storage,
+      search: '?autofill=random', hash, scramble: ['R'] });
+    assert.equal(f.get('screen-capture').hidden, false);
+    assert.equal(f.get('progress-error').hidden, true);
+    assert.equal(f.window.location.hash, '');
+    assert.equal(f.window.location.search, '?autofill=random');
+    const stickers = f.get('cap-cube').children[0].children
+      .filter(el => el.className === 'cubie').flatMap(el => el.children)
+      .filter(el => el.dataset.facelet != null);
+    assert.equal(stickers.length, 54);
+    for (const sticker of stickers) {
+      assert.equal(sticker.style.background, f.window.CubeView.HEX[colours[expected[sticker.dataset.facelet]]]);
+    }
+    assert.deepEqual([...storage], before);
+    f.window.location.hash = saved.window.location.hash;
+    f.windowListeners.hashchange.forEach(fn => fn());
+    assert.equal(f.get('screen-capture').hidden, false, 'Testing must not switch into a saved lesson');
+    f.get('cap-solve').onclick();
+    assert.equal(f.solution.ok, true);
+    assert.deepEqual([...storage], before);
+  }
+});
