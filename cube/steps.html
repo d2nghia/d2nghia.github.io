@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261124a">
+<link rel="stylesheet" href="style.css?v=20261124b">
 </head>
 <body class="manual-guide">
 <div class="wrap">
@@ -21,10 +21,25 @@
     <legend data-t="guide.centres.title">Your six centre colours</legend>
     <p data-t="guide.centres.hint">Keep your starting face underneath. Match the centre colour on each face.</p>
     <div class="guide-centre-heading"><span id="guide-face-count"></span><span id="guide-face-status" role="status"></span></div>
-    <div class="guide-centre-cards" id="guide-centre-cards" role="group"></div>
-    <div class="guide-face-editor">
-      <p id="guide-face-prompt" aria-live="polite"></p>
-      <div class="guide-centre-palette" id="guide-centre-palette" role="group" aria-labelledby="guide-face-prompt"></div>
+    <div class="guide-picker-layout">
+      <div class="guide-cube-picker">
+        <p id="guide-cube-face" aria-live="polite"></p>
+        <div class="cube-stage" id="guide-centre-cube" tabindex="0" role="group" aria-describedby="guide-cube-hint"></div>
+        <div class="guide-orbit-controls" role="group" id="guide-orbit-controls">
+          <button type="button" data-orbit="left" aria-label="Turn left">←</button>
+          <button type="button" data-orbit="up" aria-label="Turn up">↑</button>
+          <button type="button" data-orbit="down" aria-label="Turn down">↓</button>
+          <button type="button" data-orbit="right" aria-label="Turn right">→</button>
+        </div>
+        <p id="guide-cube-hint" data-t="guide.centres.drag">Drag to rotate · Tap a face to choose it</p>
+      </div>
+      <div class="guide-picker-options">
+        <div class="guide-centre-cards" id="guide-centre-cards" role="group"></div>
+        <div class="guide-face-editor">
+          <p id="guide-face-prompt" aria-live="polite"></p>
+          <div class="guide-centre-palette" id="guide-centre-palette" role="group" aria-labelledby="guide-face-prompt"></div>
+        </div>
+      </div>
     </div>
     <div class="guide-configured" id="guide-orientation" hidden>
       <span id="guide-configured-cube" aria-hidden="true"></span>
@@ -43,9 +58,10 @@
   </footer>
 </div>
 
-<script src="lang.js?v=20261124a"></script>
+<script src="lang.js?v=20261124b"></script>
 <script src="solver.js?v=20261124a"></script>
+<script src="cubeview.js?v=20261124b"></script>
 <script src="step-diagrams.js?v=20261123c"></script>
-<script src="steps.js?v=20261123c"></script>
+<script src="steps.js?v=20261124b"></script>
 </body>
 </html>

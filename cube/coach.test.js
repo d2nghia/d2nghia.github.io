@@ -1421,3 +1421,43 @@ test('corner and edge correction rotations map every sticker to its verified des
     assert.ok(stickers.every(e => e.style.background === hex[names[e.dataset.facelet]]));
   }
 });
+
+test('cube face selection supports mouse and touch rotation without painting or selecting on a drag', () => {
+  for (const pointerType of ['mouse', 'touch']) {
+    const f = fixture(), host = f.get('cap-cube');
+    const view = f.window.CubeView.create(host, null, { tapToSelect: true });
+    const selections = [], names = new Array(54).fill(null);
+    view.setNames(names); view.onSticker(index => selections.push(index));
+    const sticker = host.children[0].children.flatMap(e => e.children).find(e => e.dataset.facelet === 22);
+    const event = { pointerType, pointerId: 3, button: 0, clientX: 100, clientY: 100, target: sticker, preventDefault() {} };
+    const before = view.angles();
+    host.emit('pointerdown', event);
+    assert.equal(selections.length, 0, 'Wait until release to distinguish a tap from a drag');
+    host.emit('pointermove', { ...event, clientX: 240 });
+    host.emit('pointerup', { ...event, clientX: 240 });
+    assert.notEqual(view.angles().ry, before.ry);
+    assert.equal(selections.length, 0);
+    host.emit('pointerdown', event); host.emit('pointerup', event);
+    assert.deepEqual(selections, [22]);
+    host.emit('pointerdown', event); host.emit('pointercancel', event); host.emit('pointerup', event);
+    assert.deepEqual(selections, [22], 'A cancelled gesture cannot select a face');
+    assert.ok(names.every(c => c === null), 'Orbiting never writes centre colours');
+  }
+});
+
+test('the selected face follows actual cube orientation and every named face can be brought into view', () => {
+  const f = fixture(), view = f.window.CubeView.create(f.get('cap-cube'));
+  let front;
+  view.onView((rx, ry, face) => { front = face; });
+  for (let rx = -540; rx <= 540; rx += 23) for (let ry = -450; ry <= 450; ry += 31) {
+    view.look(rx, ry, false);
+    assert.equal(front, K.frameFromView(rx, ry).front, 'Centre selection must agree with the visible 3D face');
+  }
+  for (const start of [[-22, -32], [156, 1000], [-540, -720]]) for (const face of L.FACE_ORDER) {
+    view.look(...start, false); view.lookFace(face, false);
+    assert.equal(front, face);
+    const angle = view.angles();
+    assert.ok(Number.isFinite(angle.rx) && Number.isFinite(angle.ry));
+    assert.equal(K.frameFromView(angle.rx, angle.ry).front, face);
+  }
+});

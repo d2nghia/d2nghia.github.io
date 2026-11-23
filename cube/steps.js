@@ -15,6 +15,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var selected = {}, expanded = { cross: true }, cards = {}, active = 'cross';
   var faces = ['D', 'U', 'F', 'R', 'B', 'L'], centres = {}, activeFace = 'D', swapMessage = '';
+  var centreCube = null, turningToFace = false;
   function node(tag, className, text) {
     var el = document.createElement(tag);
     if (className) el.className = className;
@@ -23,6 +24,58 @@
   }
   function diagram(markup, className) { var el = node('span', className); el.innerHTML = markup; return el; }
   function faceName(face) { return t('guide.face.' + face); }
+  function turnToFace(face, smooth) {
+    turningToFace = true;
+    centreCube.lookFace(face, smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    turningToFace = false;
+  }
+  function selectFace(face, smooth) {
+    activeFace = face; swapMessage = '';
+    turnToFace(face, smooth); buildCentrePicker();
+  }
+  function syncCentreCube() {
+    var L = window.CubeLib;
+    var names = Array.from({ length: 54 }, function (_, i) { return i % 9 === 4 ? centres[L.FACE_ORDER[Math.floor(i / 9)]] || null : null; });
+    centreCube.setNames(names); centreCube.focus(activeFace);
+    $('guide-cube-face').textContent = faceName(activeFace);
+    $('guide-centre-cube').setAttribute('aria-label', t('guide.centres.cube'));
+    $('guide-orbit-controls').setAttribute('aria-label', t('guide.centres.rotate'));
+    document.querySelectorAll('[data-orbit]').forEach(function (button) { button.setAttribute('aria-label', t('guide.centres.rotate.' + button.dataset.orbit)); });
+    document.querySelectorAll('#guide-centre-cube [data-facelet]').forEach(function (sticker) {
+      var index = Number(sticker.dataset.facelet), face = L.FACE_ORDER[Math.floor(index / 9)];
+      sticker.classList.toggle('guide-cube-centre', index % 9 === 4);
+      if (index % 9 !== 4) return;
+      sticker.dataset.faceLabel = LANG.side(face);
+      sticker.setAttribute('aria-label', faceName(face) + ': ' + (centres[face] ? LANG.colour(centres[face]) : t('guide.centres.empty')));
+      sticker.classList.toggle('is-empty-centre', !centres[face]);
+      var marker = sticker.querySelector('.guide-centre-question');
+      if (!marker) { marker = node('span', 'guide-centre-question', '?'); marker.setAttribute('aria-hidden', 'true'); sticker.appendChild(marker); }
+      marker.hidden = !!centres[face];
+    });
+  }
+  function rotatePicker(direction) {
+    var view = centreCube.angles();
+    var rx = view.rx + (direction === 'up' ? -90 : direction === 'down' ? 90 : 0);
+    var ry = view.ry + (direction === 'left' ? -90 : direction === 'right' ? 90 : 0);
+    centreCube.look(rx, ry, !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function initCentreCube() {
+    centreCube = window.CubeView.create($('guide-centre-cube'), null, { tapToSelect: true });
+    turnToFace(activeFace, false);
+    centreCube.onSticker(function (index) { selectFace(window.CubeLib.FACE_ORDER[Math.floor(index / 9)], true); });
+    centreCube.onView(function (rx, ry, face) {
+      if (turningToFace || face === activeFace) return;
+      activeFace = face; swapMessage = ''; buildCentrePicker();
+    });
+    document.querySelectorAll('[data-orbit]').forEach(function (button) {
+      button.onclick = function () { rotatePicker(button.dataset.orbit); };
+    });
+    $('guide-centre-cube').addEventListener('keydown', function (event) {
+      var direction = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[event.key];
+      if (!direction || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      event.preventDefault(); rotatePicker(direction);
+    });
+  }
   function buildCentrePicker() {
     var host = $('guide-centre-cards'), palette = $('guide-centre-palette');
     host.innerHTML = ''; palette.innerHTML = '';
@@ -35,17 +88,12 @@
       button.type = 'button'; button.dataset.face = face;
       button.setAttribute('aria-pressed', String(face === activeFace));
       button.setAttribute('aria-label', faceName(face) + ': ' + (colour ? LANG.colour(colour) : t('guide.centres.empty')));
-      var mini = node('span', 'guide-mini-centre'); mini.setAttribute('aria-hidden', 'true');
-      for (var i = 0; i < 9; i++) {
-        var cell = node('i');
-        if (i === 4) { cell.className = 'is-centre'; cell.style.background = colour ? G.HEX[colour] : 'transparent'; cell.textContent = colour ? '' : '?'; }
-        mini.appendChild(cell);
-      }
-      button.appendChild(mini);
+      var swatch = node('span', 'guide-face-swatch', colour ? '' : '?'); swatch.setAttribute('aria-hidden', 'true');
+      swatch.style.background = colour ? G.HEX[colour] : 'transparent'; button.appendChild(swatch);
       button.appendChild(node('strong', '', faceName(face)));
       button.appendChild(node('span', 'guide-centre-value', colour ? LANG.colour(colour) : t('guide.centres.empty')));
       button.onclick = function () {
-        activeFace = face; swapMessage = ''; buildCentrePicker();
+        selectFace(face, true);
         host.querySelector('[data-face="' + face + '"]').focus({ preventScroll: true });
       };
       host.appendChild(button);
@@ -65,6 +113,7 @@
         swapMessage = result.swappedFace ? t('guide.centres.swap', { first: faceName(face).toLowerCase(), second: faceName(result.swappedFace).toLowerCase() }) : '';
         colourScheme = G.schemeForCentres(centres);
         if (wasEmpty) activeFace = faces.find(function (key) { return !centres[key]; }) || face;
+        turnToFace(activeFace, true);
         buildCentrePicker(); build();
         // Rebuilding updates colour-owner hints; keep keyboard focus on the
         // colour that was just selected as the next face becomes active.
@@ -73,6 +122,7 @@
       palette.appendChild(button);
     });
     $('guide-centre-reset').hidden = count === 0;
+    syncCentreCube();
   }
   function showStage(key) {
     var card = cards[key]; card.load(); card.el.open = true; expanded[key] = true; active = key; labelNav();
@@ -158,9 +208,10 @@
   $('guide-centre-reset').onclick = function () {
     centres = {}; activeFace = 'D'; colourScheme = null; swapMessage = '';
     selected = {}; expanded = { cross: true }; active = 'cross';
+    turnToFace(activeFace, true);
     buildCentrePicker(); build();
   };
-  LANG.apply(document); buildCentrePicker(); build();
+  LANG.apply(document); initCentreCube(); buildCentrePicker(); build();
   $('lang-switch').onclick = function () { LANG.toggle(); };
   LANG.onChange(function () { swapMessage = ''; buildCentrePicker(); build(); });
 })();

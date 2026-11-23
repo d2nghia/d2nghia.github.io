@@ -89,7 +89,8 @@
 
   /* ---------------- live cube ---------------- */
   var UNSEEN = '#878f9e';
-  function create(host, faceColour) {
+  function create(host, faceColour, options) {
+    options = options || {};
     faceColour = faceColour || STANDARD;
     // The whole mat accepts drags; the smaller stage still controls cube sizing.
     var surface = host.closest('.cap-model, .mat') || host;
@@ -193,7 +194,7 @@
 
     function applyView() {
       built.cube.style.transform = 'rotateX(' + view.rx + 'deg) rotateY(' + view.ry + 'deg)';
-      if (onView) onView(view.rx, view.ry);
+      if (onView) onView(view.rx, view.ry, facingFace(view.rx, view.ry));
     }
     /** Draw whatever has been read so far; anything still unknown stays grey. */
     function paintByName() {
@@ -213,6 +214,10 @@
     }
     function fit() {
       var w = host.clientWidth || 300;
+      if (host.id === 'guide-centre-cube') {
+        built.cube.style.scale = Math.max(0.25, Math.min(w, host.clientHeight || 250) / 260);
+        return;
+      }
       if (host.id === 'coach-cube') w = Math.min(w, host.clientHeight || 300);
       built.cube.style.scale = host.id === 'coach-cube' ? Math.max(0.25, w / 230) : Math.max(0.7, Math.min(1.7, w / 230));
     }
@@ -496,7 +501,7 @@
     surface.addEventListener('pointerdown', function (e) {
       if (e.target.closest('.cam-dock')) return;
       var mouse = e.pointerType === 'mouse';
-      if (mouse && e.button === 0 && onSticker && faceletUnder(e) != null) {
+      if (mouse && e.button === 0 && onSticker && !options.tapToSelect && faceletUnder(e) != null) {
         painting = true;
         paintAt(e);
         try { surface.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
@@ -541,7 +546,7 @@
       showRepair: showRepair,
       stopRepair: stopRepair,
       onSticker: function (cb) { onSticker = cb; },
-      onView: function (cb) { onView = cb; cb(view.rx, view.ry); },
+      onView: function (cb) { onView = cb; cb(view.rx, view.ry, facingFace(view.rx, view.ry)); },
       flash: function () {
         host.classList.remove('read-flash');
         void host.offsetWidth;
@@ -553,8 +558,24 @@
         repaint(null);
       },
       angles: function () { return { rx: view.rx, ry: view.ry }; },
-      look: look
+      look: look,
+      lookFace: function (face, smooth) {
+        var angles = facingAngles(face);
+        look(angles.rx, angles.ry, smooth);
+      }
     };
+  }
+
+  // The face whose outward normal points most directly towards the viewer.
+  function facingFace(rx, ry) {
+    var x = rx * Math.PI / 180, y = ry * Math.PI / 180;
+    var best = null, score = -Infinity;
+    L.FACE_ORDER.forEach(function (face, i) {
+      var n = L.FACELETS[i * 9 + 4].pos;
+      var z = -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
+      if (z > score) { best = face; score = z; }
+    });
+    return best;
   }
 
   function rotateTurnGuides(guides, rotation) {
