@@ -25,7 +25,7 @@
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
-  var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying', newCubeRequested = false;
+  var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying';
   var modePreviewsReady = false;
   function show(screen) {
     if (screen === 'start') renderModePreviews();
@@ -280,24 +280,10 @@
     return false;
   }
 
-  function restoreSavedProgress() {
-    try {
-      var saved = P.decode(localStorage.getItem(P.STORE));
-      if (saved) { restoreProgress(saved); return true; }
-    } catch (e) { /* unavailable or damaged storage must not prevent starting */ }
-    var legacy = rememberedCube();
-    if (legacy) { restoreProgress({ view: 'capture', names: legacy }); return true; }
-    return false;
-  }
-
   function startGuided() {
     $('progress-error').hidden = true;
-    if (newCubeRequested) {
-      newCubeRequested = false;
-      startCapture(true);
-      return;
-    }
-    if (!restoreSavedProgress()) startCapture(false);
+    session = null;
+    startCapture(true);
   }
   function facesLeft() {
     var left = 0;
@@ -1005,7 +991,6 @@
   $('coach-back').onclick = function () { step(-1); };
   $('done-again').onclick = function () {
     if (cubeView.busy()) return;
-    newCubeRequested = true;
     stopCamera();
     show('start');
     try { window.history.replaceState(null, '', window.location.pathname + window.location.search); }
@@ -1059,7 +1044,7 @@
   });
   show('start');
   // Only an explicit shared link or practice request bypasses the mode picker.
-  // Local progress resumes after the child chooses guided solving.
+  // Choosing guided solving starts fresh; an active lesson's URL restores it.
   if (autofillRandom) startCapture(false, null, true);
   else restoreSharedProgress();
 })();
