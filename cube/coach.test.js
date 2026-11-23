@@ -1063,7 +1063,7 @@ test('autofill still produces a shareable URL when local storage is unavailable'
   assert.equal(shared.window.location.hash, f.window.location.hash);
 });
 
-test('version 1 shared links and local saves migrate to Base64 while keeping the cube and step', () => {
+test('version 1 and 2 shared links and local saves migrate to compressed URLs while keeping the cube and step', () => {
   const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
   f.get('coach-move-track').children[1].onclick({ detail: 0 });
   const current = P.decode(f.window.location.hash), s = current.session;
@@ -1072,15 +1072,17 @@ test('version 1 shared links and local saves migrate to Base64 while keeping the
     step: s.cursor + 1, turns: s.moves.map(m => m.length === 1 ? m : m[0].toLowerCase()).join(''),
     goals: s.targets.map(key => keys.indexOf(key)).join('') });
   const old = '#' + params;
-  for (const config of [{ hash: old }, { storage: new Map([[P.STORE, old]]) }]) {
+  const packed = '#p=2.iSSSTtrbbZI222kkkkrbtts25JJAAQAgoUCi6g';
+  for (const config of [{ hash: old }, { storage: new Map([[P.STORE, old]]) },
+    { hash: packed }, { storage: new Map([[P.STORE, packed]]) }]) {
     const restored = fixture({ app: true, persistence: true, autoSolve: false, ...config });
-    assert.match(restored.window.location.hash, /^#p=2\./);
+    assert.match(restored.window.location.hash, /^#p=3\./);
     assert.deepEqual(restored.coach.get(), f.coach.get());
     assert.equal(restored.get('coach-progress').textContent, f.get('coach-progress').textContent);
     assert.equal(restored.storage.get(P.STORE), restored.window.location.hash);
   }
   const storage = new Map(f.storage);
-  const invalid = fixture({ app: true, persistence: true, storage, hash: '#p=2.invalid', autoSolve: false });
+  const invalid = fixture({ app: true, persistence: true, storage, hash: '#p=3.invalid', autoSolve: false });
   assert.equal(invalid.get('progress-error').hidden, false);
   assert.equal(storage.get(P.STORE), f.window.location.hash);
 });

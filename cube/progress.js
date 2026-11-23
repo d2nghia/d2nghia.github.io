@@ -38,11 +38,11 @@
   }
 
   function decodeCompact(value) {
-    if (!/^2\.[A-Za-z0-9_-]+$/.test(value) || value.length > 2500) return null;
+    if (!/^[23]\.[A-Za-z0-9_-]+$/.test(value) || value.length > 2500) return null;
     try {
       var data = value.slice(2);
       var bytes = Array.from(atob(data.replace(/-/g, '+').replace(/_/g, '/')), function (c) { return c.charCodeAt(0); });
-      if (bytes.length < 23 || base64(bytes) !== data) return null;
+      if (bytes.length < (value[0] === '2' ? 23 : 3) || base64(bytes) !== data) return null;
       var crc = bytes[bytes.length - 2] * 256 + bytes[bytes.length - 1];
       bytes = bytes.slice(0, -2);
       if (checksum(bytes) !== crc) return null;
@@ -55,6 +55,11 @@
       }
       var view = VIEWS[read(2)], names = [];
       if (!view) return null;
+      if (value[0] === '3') {
+        var progress = readCompressed(view, read);
+        if (bytes.length !== Math.ceil(offset / 8) || read(bytes.length * 8 - offset) !== 0) return null;
+        return progress;
+      }
       for (var i = 0; i < 54; i++) {
         var colour = read(3);
         if (colour >= NAMES.length) return null;
@@ -75,6 +80,91 @@
       if (bytes.length !== Math.ceil(offset / 8) || read(bytes.length * 8 - offset) !== 0) return null;
       return view === 'coach' ? restoreLesson(names, moves, targets, cursor) : { view: view, names: names };
     } catch (e) { return null; }
+  }
+
+  // Positive integers use Elias gamma codes: short runs/references cost fewer
+  // bits, with no dictionaries or browser compression APIs needed to restore.
+  function gammaSize(value) { return Math.floor(Math.log2(value)) * 2 + 1; }
+
+  function writeSymbols(values, width, write) {
+    function gamma(value, put) {
+      var bits = Math.floor(Math.log2(value));
+      put(0, bits); put(value, bits + 1);
+    }
+    function raw(put) { values.forEach(function (v) { put(v, width); }); }
+    function runs(put) {
+      for (var at = 0; at < values.length;) {
+        var end = at + 1;
+        while (end < values.length && values[end] === values[at]) end++;
+        put(values[at], width); gamma(end - at, put); at = end;
+      }
+    }
+    // LZ references copy a previous sequence, including overlapping repeats.
+    var tokens = [];
+    for (var at = 0; at < values.length;) {
+      var best = null, saving = 0;
+      for (var distance = 1; distance <= at; distance++) {
+        var length = 0;
+        while (at + length < values.length && values[at + length] === values[at + length - distance]) length++;
+        if (length < 3) continue;
+        var gain = length * (width + 1) - 1 - gammaSize(distance) - gammaSize(length - 2);
+        if (gain > saving) { saving = gain; best = { distance: distance, length: length }; }
+      }
+      tokens.push(best || { value: values[at] });
+      at += best ? best.length : 1;
+    }
+    function references(put) {
+      tokens.forEach(function (token) {
+        put(token.distance ? 1 : 0, 1);
+        if (token.distance) { gamma(token.distance, put); gamma(token.length - 2, put); }
+        else put(token.value, width);
+      });
+    }
+    var choices = [raw, runs, references], sizes = choices.map(function (emit) {
+      var size = 0; emit(function (_, bits) { size += bits; }); return size;
+    });
+    var mode = sizes.indexOf(Math.min.apply(null, sizes));
+    write(mode, 2); choices[mode](write);
+  }
+
+  function readSymbols(count, width, limit, read) {
+    var mode = read(2), values = [];
+    if (mode === 3) throw new Error('Unknown compression');
+    function gamma() {
+      var zeros = 0;
+      while (read(1) === 0) if (++zeros > 11) throw new Error('Oversized reference');
+      return Math.pow(2, zeros) + read(zeros);
+    }
+    while (values.length < count) {
+      if (mode === 2 && read(1)) {
+        var distance = gamma(), length = gamma() + 2;
+        if (distance > values.length || length > count - values.length) throw new Error('Invalid reference');
+        while (length--) values.push(values[values.length - distance]);
+      } else {
+        var value = read(width), run = mode === 1 ? gamma() : 1;
+        if (value >= limit || run > count - values.length) throw new Error('Invalid run');
+        while (run--) values.push(value);
+      }
+    }
+    return values;
+  }
+
+  function readCompressed(view, read) {
+    if (view !== 'coach') return { view: view, names: readSymbols(54, 3, NAMES.length, read).map(function (n) { return NAMES[n]; }) };
+    var colours = [];
+    for (var i = 0; i < 6; i++) {
+      var colour = NAMES[read(3)];
+      if (!colour || colours.indexOf(colour) >= 0) throw new Error('Invalid centres');
+      colours.push(colour);
+    }
+    var cursor = read(12), count = read(12);
+    if (count > MAX_MOVES || cursor > count) throw new Error('Invalid step');
+    var moves = readSymbols(count, 4, MOVES.length, read).map(function (m) { return MOVES[m]; });
+    var targets = readSymbols(count, 3, GOALS.length, read).map(function (g) { return GOALS[g]; });
+    // The exact saved solution uniquely determines its starting cube. Keeping
+    // the centres preserves the child's colours without storing 54 duplicates.
+    var start = L.applyMoves(L.solvedState(), L.inverse(moves));
+    return restoreLesson(Array.from(start, function (face) { return colours[face]; }), moves, targets, cursor);
   }
 
   function decode(hash) {
@@ -103,7 +193,7 @@
     return restoreLesson(names, moves, goals.split('').map(function (n) { return GOALS[Number(n)]; }), cursor);
   }
 
-  function encode(progress) {
+  function encodePacked(progress) {
     // Version 2: view (2 bits), colours (54 x 3), then for lessons cursor/count
     // (12 bits each) and moves/goals (4 + 3 bits per turn), plus a CRC-16.
     // Packing first makes Base64 genuinely shorter than encoding query text.
@@ -131,6 +221,32 @@
     var crc = checksum(bytes);
     bytes.push(crc >> 8, crc & 255);
     return '#p=2.' + base64(bytes);
+  }
+
+  function encode(progress) {
+    // Keep v2 as a fallback when compression would make the URL longer.
+    var packed = encodePacked(progress), bytes = [], offset = 0;
+    function write(value, width) {
+      while (width--) {
+        var at = offset >> 3;
+        bytes[at] = (bytes[at] || 0) | (((value >> width) & 1) << (7 - (offset & 7)));
+        offset++;
+      }
+    }
+    write(VIEWS.indexOf(progress.view), 2);
+    if (progress.view === 'coach') {
+      var s = progress.session, colours = progress.names.filter(function (_, i) { return i % 9 === 4; });
+      var start = L.applyMoves(L.solvedState(), L.inverse(s.moves));
+      if (new Set(colours).size !== 6 || progress.names.some(function (name, i) { return name !== colours[start[i]]; })) return packed;
+      colours.forEach(function (name) { write(NAMES.indexOf(name), 3); });
+      write(s.cursor, 12); write(s.moves.length, 12);
+      writeSymbols(s.moves.map(function (m) { return MOVES.indexOf(m); }), 4, write);
+      writeSymbols(s.targets.map(function (g) { return GOALS.indexOf(g); }), 3, write);
+    } else writeSymbols(progress.names.map(function (name) { return NAMES.indexOf(name); }), 3, write);
+    var crc = checksum(bytes);
+    bytes.push(crc >> 8, crc & 255);
+    var compressed = '#p=3.' + base64(bytes);
+    return compressed.length < packed.length ? compressed : packed;
   }
 
   function fromSession(session, cursor) {

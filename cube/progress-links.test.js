@@ -100,7 +100,7 @@ test('compact links use URL-safe Base64 and are substantially shorter than the p
   ];
   for (const record of records) {
     const compact = P.encode(record), old = legacy(record);
-    assert.match(compact, /^#p=2\.[A-Za-z0-9_-]+$/);
+    assert.match(compact, /^#p=[23]\.[A-Za-z0-9_-]+$/);
     assert.ok(compact.length < old.length * 0.65, compact.length + ' vs ' + old.length);
     assert.deepEqual(P.decode(compact), P.decode(old), 'Both formats must restore exactly the same progress');
   }
@@ -121,18 +121,114 @@ test('all existing version 1 link types remain readable and can be converted to 
 
 test('compact links reject damaged, truncated, noncanonical, oversized, and unsupported payloads', () => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  for (const progress of [{ view: 'capture', names: Array(54).fill(null) }, P.fromSession(lesson(['U2']), 1)]) {
-    const hash = P.encode(progress), payload = hash.slice(5);
+  for (const hash of [P.encode({ view: 'capture', names: Array(54).fill(null) }),
+    P.encode(P.fromSession(lesson(['U2']), 1)), '#p=2.iSSSTtrbbZI222kkkkrbtts25JJAAQAgoUCi6g']) {
+    const payload = hash.slice(5);
     for (let i = 0; i < payload.length; i++) {
       const modified = payload.slice(0, i) + alphabet[(alphabet.indexOf(payload[i]) + 1) % 64] + payload.slice(i + 1);
-      assert.equal(P.decode('#p=2.' + modified), null, 'Corruption at character ' + i + ' must be detected');
+      assert.equal(P.decode(hash.slice(0, 5) + modified), null, 'Corruption at character ' + i + ' must be detected');
     }
     for (const invalid of [hash.slice(0, -1), hash + 'A', hash + '=', hash + '&p=2.AAAA',
-      hash + '&v=1', hash.replace('#p=2.', '#p=3.'), '#p=2.' + 'A'.repeat(2501)]) {
+      hash + '&v=1', hash.replace(/^#p=\d\./, '#p=4.'), '#p=3.' + 'A'.repeat(2501)]) {
       assert.equal(P.decode(invalid), null);
     }
   }
   const wrong = lesson(['U2']); wrong.moves = ['R', 'R'];
   assert.equal(P.decode(P.encode(P.fromSession(wrong))), null, 'A valid checksum cannot make an incorrect solution valid');
   for (const invalid of ['#p=', '#p=2.', '#p=2.A', '#p=2.@@@', '#p=2./+==']) assert.equal(P.decode(invalid), null);
+});
+
+test('existing version 2 links remain readable and migrate to compressed links', () => {
+  // Fixed fixtures produced by the released v2 encoder, independent of v3.
+  const records = [
+    [{ view: 'capture', names: Array(54).fill(null) }, '#p=2.AAAAAAAAAAAAAAAAAAAAAAAAAAAAN9k'],
+    [{ view: 'check', names: Array(54).fill('orange') }, '#p=2.dttttttttttttttttttttttttttg_Fs'],
+    [P.fromSession(lesson(['U2']), 1), '#p=2.iSSSTtrbbZI222kkkkrbtts25JJAAQAgoUCi6g']
+  ];
+  for (const [record, hash] of records) {
+    assert.deepEqual(P.decode(hash), P.decode(legacy(record)));
+    assert.match(P.encode(P.decode(hash)), /^#p=3\./);
+    assert.deepEqual(P.decode(P.encode(P.decode(hash))), P.decode(hash));
+  }
+});
+
+test('compression reduces repeated colours and complete lessons beyond the bit-packed v2 format', () => {
+  function packedLength(record) {
+    const bits = 164 + (record.session ? 24 + record.session.moves.length * 7 : 0);
+    return 5 + Math.ceil((Math.ceil(bits / 8) + 2) * 8 / 6);
+  }
+  for (const names of [Array(54).fill(null), Array(54).fill('red'),
+    Array.from(C.solvedState(), n => ['white', 'red', 'green', 'yellow', 'orange', 'blue'][n])]) {
+    const record = { view: 'capture', names };
+    assert.ok(P.encode(record).length < packedLength(record) * 0.6);
+    assert.deepEqual(P.decode(P.encode(record)), record);
+  }
+  const record = P.fromSession(lesson(C.parse('R U F L D B')), 20);
+  assert.ok(P.encode(record).length < packedLength(record) * 0.65);
+  // Deterministic samples cover unrelated scrambles, stages, colour runs, and
+  // LZ references. Compression must never expand the released packed format.
+  let seed = 48271;
+  function random(max) { seed = (seed * 16807) % 2147483647; return seed % max; }
+  const turns = ['U', "U'", 'U2', 'R', "R'", 'R2', 'F', "F'", 'F2',
+    'D', "D'", 'D2', 'L', "L'", 'L2', 'B', "B'", 'B2'];
+  let oldTotal = 0, newTotal = 0, rawFallbacks = 0;
+  for (let i = 0; i < 100; i++) {
+    const s = lesson(Array.from({ length: 20 }, () => turns[random(turns.length)]));
+    const progress = P.fromSession(s, random(s.moves.length + 1)), hash = P.encode(progress);
+    assert.ok(hash.length <= packedLength(progress));
+    assert.deepEqual(P.decode(hash), P.decode(legacy(progress)));
+    oldTotal += packedLength(progress); newTotal += hash.length;
+    const capture = { view: i % 2 ? 'check' : 'capture', names: Array.from({ length: 54 },
+      () => [null, 'white', 'yellow', 'green', 'blue', 'red', 'orange'][random(7)]) };
+    const captureHash = P.encode(capture);
+    if (captureHash.startsWith('#p=2.')) rawFallbacks++;
+    assert.ok(captureHash.length <= packedLength(capture));
+    assert.deepEqual(P.decode(captureHash), capture);
+  }
+  assert.ok(rawFallbacks > 0, 'Incompressible colours should use the smaller v2 format');
+  assert.ok(newTotal < oldTotal * 0.7, newTotal + ' vs ' + oldTotal);
+});
+
+test('compressed lessons preserve overlapping references, arbitrary stage changes, and the maximum step count', () => {
+  const s = lesson([]);
+  s.moves = Array(2048).fill('U');
+  for (const targets of [Array(2048).fill('cross'), Array.from({ length: 2048 }, (_, i) => GOALS[i % 7])]) {
+    s.targets = targets;
+    for (const cursor of [0, 1, 1024, 2048]) {
+      const record = P.fromSession(s, cursor), hash = P.encode(record);
+      assert.match(hash, /^#p=3\./);
+      assert.deepEqual(P.decode(hash), P.decode(legacy(record)));
+    }
+  }
+});
+
+test('compressed links reject invalid runs, references, modes, centres, and step counts even with a valid checksum', () => {
+  function payload(fields) {
+    const bits = fields.map(([value, width]) => value.toString(2).padStart(width, '0')).join('');
+    const padded = bits.padEnd(Math.ceil(bits.length / 8) * 8, '0');
+    const bytes = Array.from({ length: padded.length / 8 }, (_, i) => parseInt(padded.slice(i * 8, i * 8 + 8), 2));
+    let crc = 65535;
+    for (const byte of bytes) {
+      crc ^= byte << 8;
+      for (let i = 0; i < 8; i++) crc = ((crc << 1) ^ (crc & 32768 ? 4129 : 0)) & 65535;
+    }
+    return '#p=3.' + Buffer.from([...bytes, crc >> 8, crc & 255]).toString('base64url');
+  }
+  const coach = [[2, 2], ...[1, 5, 3, 2, 6, 4].map(n => [n, 3])];
+  const invalid = [
+    [[3, 2]], // Unknown screen.
+    [[0, 2], [3, 2]], // Unknown colour compression.
+    [[0, 2], [0, 2], [7, 3]], // Unknown colour.
+    [[0, 2], [1, 2], [1, 3], [55, 11]], // A run beyond the last sticker.
+    [[0, 2], [2, 2], [1, 1], [1, 1], [1, 1]], // Reference before any literal.
+    [[0, 2], [1, 2], [1, 3], [0, 12]], // Oversized gamma integer.
+    [[2, 2], ...[1, 1, 3, 2, 6, 4].map(n => [n, 3])], // Duplicate centres.
+    [[2, 2], ...[0, 5, 3, 2, 6, 4].map(n => [n, 3])], // Blank centre.
+    [...coach, [2, 12], [1, 12]], // Cursor after Done.
+    [...coach, [0, 12], [2049, 12]], // Too many moves.
+    [...coach, [0, 12], [1, 12], [0, 2], [15, 4]], // Unknown move.
+    [...coach, [0, 12], [0, 12], [0, 2], [3, 2]], // Unknown goal compression.
+    [...coach, [0, 12], [0, 12], [0, 2], [0, 2], [1, 1]] // Nonzero final padding.
+  ];
+  for (const fields of invalid) assert.equal(P.decode(payload(fields)), null, JSON.stringify(fields));
 });
