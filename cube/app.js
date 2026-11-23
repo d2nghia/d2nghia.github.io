@@ -3,13 +3,14 @@
  * at a time in plain words.
  *
  * Three pieces: a camera capture flow that confirms each face before moving on,
- * a sticker editor that doubles as the fix-up screen and the no-camera path,
+ * an optional flat sticker editor for entering colours without the camera,
  * and a coach that walks the solver's moves on a 3D model of their own cube.
  */
 (function () {
   'use strict';
   var L = window.CubeLib;
   var P = window.CubeProgress;
+  var CHECK = window.CubeValidation;
   // Generate once; the resulting progress URL restores this cube on reload.
   var autofillRandom = new URLSearchParams(window.location.search).get('autofill') === 'random';
 
@@ -34,6 +35,7 @@
     $('go-home').hidden = screen === 'start';
     $('back-links').hidden = screen !== 'start';
     currentScreen = screen;
+    if (screen !== 'capture') clearCaptureIssue();
     document.body.classList.toggle('is-starting', screen === 'start');
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
@@ -124,6 +126,7 @@
   /* ================= capture flow ================= */
   var names = new Array(54).fill(null);
   var capView = null, capPalette = null;
+  var captureIssue = null, repairIndex = 0;
   var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], gone: 0, on: false, mirror: false, handFixed: {}, candidate: { key: '', cells: null, streak: 0 } };
 
   /**
@@ -150,9 +153,80 @@
   }
 
   function paintModel() {
+    clearCaptureIssue();
     if (capView) capView.setNames(names);
     $('cap-msg').hidden = true;
     rememberCube();
+  }
+
+  function clearCaptureIssue() {
+    captureIssue = null;
+    if (capView) capView.stopRepair();
+    $('cap-issue').hidden = true;
+    $('cap-issue-badge').hidden = true;
+  }
+
+  function repairPhase(phase) {
+    var label = t('repair.phase.' + (phase === 'preview' ? 'preview' : phase === 'turn' ? 'turn' : 'original'));
+    $('cap-issue-badge').textContent = label;
+  }
+
+  function renderCaptureIssue(animate) {
+    if (!captureIssue) return;
+    var report = captureIssue, suggestion = report.suggestions[repairIndex];
+    var known = ['missing', 'centres', 'count', 'twist', 'flip', 'parity', 'corner-order', 'stuck'];
+    var code = known.indexOf(report.code) >= 0 ? report.code : 'pieces';
+    $('cap-issue-title').textContent = t('repair.' + code + '.title');
+    $('cap-issue-hint').textContent = t(!suggestion && ['twist', 'flip', 'parity', 'corner-order'].indexOf(code) >= 0 ? 'repair.review.hint' : 'repair.' + code + '.hint');
+    $('cap-issue-compare').hidden = !suggestion;
+    $('cap-issue-replay').hidden = !report.groups.length && !suggestion;
+    $('cap-issue-help').hidden = code === 'missing' || code === 'centres' || code === 'count' || code === 'stuck';
+    $('cap-issue-prev').disabled = repairIndex === 0;
+    $('cap-issue-next').disabled = repairIndex >= report.suggestions.length - 1;
+    $('cap-issue-prev').setAttribute('aria-label', t('repair.previous'));
+    $('cap-issue-next').setAttribute('aria-label', t('repair.next'));
+    $('cap-issue-option').textContent = t('repair.option', { n: repairIndex + 1, total: report.suggestions.length });
+    $('cap-issue-counts').hidden = code !== 'count';
+    $('cap-issue-counts').innerHTML = '';
+    if (code === 'count') report.counts.forEach(function (item) {
+      var badge = document.createElement('span');
+      badge.className = item.count === 9 ? '' : 'wrong-count';
+      var swatch = document.createElement('i');
+      swatch.style.background = HEX[item.colour];
+      badge.appendChild(swatch);
+      var label = document.createElement('span'); label.textContent = item.count + '/9'; badge.appendChild(label);
+      badge.setAttribute('aria-label', LANG.colour(item.colour) + ': ' + item.count + '/9');
+      $('cap-issue-counts').appendChild(badge);
+    });
+    var groups = suggestion ? suggestion.pieces : report.groups;
+    var options = suggestion || { indices: groups.reduce(function (all, p) { return all.concat(p); }, []), pieces: groups };
+    capView.showRepair(Object.assign({}, options, { animate: !!animate }), repairPhase);
+  }
+
+  function showCaptureIssue(report) {
+    if (currentScreen !== 'capture') startCapture(false, names);
+    clearCaptureIssue();
+    captureIssue = report; repairIndex = 0;
+    $('cap-msg').hidden = true;
+    $('cap-issue').hidden = false;
+    $('cap-issue-badge').hidden = !report.groups.length && !report.suggestions.length;
+    $('cap-issue-help').open = false;
+    renderCaptureIssue();
+    $('cap-issue-title').focus({ preventScroll: true });
+    if ($('cap-cube').scrollIntoView) $('cap-cube').scrollIntoView({ block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+
+  function applyRepair() {
+    if (!captureIssue || !captureIssue.source.every(function (c, i) { return c === names[i]; })) return;
+    var suggestion = captureIssue.suggestions[repairIndex];
+    if (!suggestion || !CHECK.assess(suggestion.after).ok) return;
+    names = suggestion.after.slice();
+    paintModel();
+    $('cap-msg').className = 'small center kept-line';
+    $('cap-msg').textContent = t('repair.applied');
+    $('cap-msg').hidden = false;
+    $('cap-solve').focus({ preventScroll: true });
   }
 
   /* The colours are kept on this device, so a cube read once does not have to
@@ -336,6 +410,7 @@
     if (cam.on) stopCamera(); else startCamera();
   }
   function startCamera() {
+    clearCaptureIssue();
     cam.on = true;
     cam.found = null;
     cam.history = [];
@@ -656,38 +731,9 @@
   var session = null;
 
   function assemble() {
-    var centres = L.FACE_ORDER.map(function (f, i) { return names[i * 9 + 4]; });
-    if (centres.some(function (c) { return !c; })) {
-      renderNet(t('net.err.centre'), t('net.err.centre.why'));
-      return;
-    }
-    var distinct = {};
-    for (var i = 0; i < 6; i++) {
-      if (distinct[centres[i]]) {
-        renderNet(t('net.err.same'), t('net.err.same.why', { colour: LANG.colour(centres[i]) }));
-        return;
-      }
-      distinct[centres[i]] = 1;
-    }
-    var faceOfColour = {};
-    centres.forEach(function (c, i) { faceOfColour[c] = i; });
-
-    var state = new Int8Array(54);
-    for (i = 0; i < 54; i++) {
-      var f = faceOfColour[names[i]];
-      if (f == null) {
-        renderNet(t('net.err.unknown'), t('net.err.unknown.why'));
-        return;
-      }
-      state[i] = f;
-    }
-    var check = L.validate(state);
-    if (!check.ok) {
-      renderNet(t('net.err.impossible'), t('net.err.impossible.why', { hint: check.hint }));
-      return;
-    }
-
-    solveAndTeach(state, centres.slice());
+    var report = CHECK.inspect(names);
+    if (!report.ok) { showCaptureIssue(report); return; }
+    solveAndTeach(report.state, report.centres.slice());
   }
 
   /** Turn a checked cube into a lesson. */
@@ -700,7 +746,7 @@
     });
     var result = L.solve(state);
     if (!result.ok) {
-      renderNet(t('net.err.stuck'), t('net.err.stuck.why'));
+      showCaptureIssue({ code: 'stuck', source: names.slice(), suggestions: [], groups: [] });
       return;
     }
     // One numbered step is always one quarter turn. Keep repeated turns as
@@ -979,6 +1025,7 @@
     labelShare();
     labelResizeHandle();
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
+    if (captureIssue) renderCaptureIssue();
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
   });
   $('go-camera').onclick = startGuided;
@@ -986,6 +1033,10 @@
   $('net-redo').onclick = function () { startCapture(false); };
   $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
   $('cap-solve').onclick = trySolve;
+  $('cap-issue-replay').onclick = function () { renderCaptureIssue(true); };
+  $('cap-issue-prev').onclick = function () { if (captureIssue && repairIndex > 0) { repairIndex--; renderCaptureIssue(); } };
+  $('cap-issue-next').onclick = function () { if (captureIssue && repairIndex < captureIssue.suggestions.length - 1) { repairIndex++; renderCaptureIssue(); } };
+  $('cap-issue-apply').onclick = applyRepair;
   $('go-demo').onclick = startDemo;
   $('net-solve').onclick = assemble;
   $('coach-next').onclick = function () { step(1); };
@@ -1033,6 +1084,8 @@
     else replay();
   });
   document.addEventListener('visibilitychange', function () {
+    if (capView && document.hidden) capView.stopRepair();
+    else if (captureIssue && currentScreen === 'capture') renderCaptureIssue();
     if (!cubeView) return;
     if (document.hidden) cubeView.stopDemo();
     else replay();

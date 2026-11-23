@@ -109,7 +109,7 @@
     var focusFace = null;      // the side the camera will write onto
     var onView = null;
     var view = { rx: -22, ry: -32 };
-    var hintFace = null, hintTimer = 0, demo = null;
+    var hintFace = null, hintTimer = 0, demo = null, repair = null;
 
     function clearHints() {
       clearTimeout(hintTimer);
@@ -202,11 +202,12 @@
           var idx = FACELET_AT[c.pos.join(',') + '|' + f];
           var el = c.faces[f];
           if (idx == null) { el.style.background = DEAD; el.style.boxShadow = 'none'; return; }
-          var n = names[idx];
+          var n = repair && repair.preview && repair.after ? repair.after[idx] : names[idx];
           el.style.background = n ? HEX[n] : UNSEEN;
           el.style.boxShadow = n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
           el.classList.toggle('is-focused', f === focusFace);
-          markMissing(el, !n && f === hintFace);
+          el.classList.toggle('validation-target', !!repair && repair.indices.indexOf(idx) >= 0);
+          markMissing(el, (!n && f === hintFace) || (!!repair && !repair.after && repair.indices.indexOf(idx) >= 0));
         });
       });
     }
@@ -216,7 +217,7 @@
       built.cube.style.scale = host.id === 'coach-cube' ? Math.max(0.25, w / 230) : Math.max(0.7, Math.min(1.7, w / 230));
     }
     function repaint(highlight) {
-      var litFace = names ? focusFace : null;
+      var litFace = names && !repair ? focusFace : null;
       built.cube.classList.toggle('has-focus', !!litFace);
       built.cube.classList.toggle('has-move', !!highlight);
       Object.keys(lights).forEach(function (f) {
@@ -307,6 +308,7 @@
     // Preview turns never change state. Each repeat starts from the same cube;
     // the coach commits a turn only when the child confirms it.
     function stopDemo() {
+      stopRepair();
       if (!demo) return;
       clearTimeout(demo.timer);
       cancelAnimationFrame(demo.frame);
@@ -375,6 +377,92 @@
       if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) begin();
     }
 
+    function stopRepair() {
+      if (!repair) return;
+      var old = repair;
+      repair = null;
+      clearTimeout(old.timer); cancelAnimationFrame(old.frame);
+      old.guides.forEach(function (el) { el.remove(); });
+      built.cubies.forEach(function (c) { c.el.style.transform = base(c.pos); });
+      built.cube.classList.remove('repairing', 'repair-reset', 'repair-paint');
+      delete host.dataset.validationPhase;
+      clearHints(); repaint(null);
+      if (old.onPhase) old.onPhase('stopped');
+    }
+
+    // Correction demos are independent of real cube turns: they preview how
+    // entered sticker colours might be rearranged, without modifying input.
+    function showRepair(options, onPhase) {
+      stopDemo(); clearHints();
+      if (!names || !options.indices || !options.indices.length) return;
+      var r = { indices: options.indices.slice(), after: options.after || null, pieces: options.pieces || [],
+        preview: false, timer: 0, frame: 0, guides: [], onPhase: onPhase };
+      repair = r;
+      built.cube.classList.add('repairing');
+      built.cube.classList.toggle('repair-paint', options.kind === 'paint');
+      function phase(name) { host.dataset.validationPhase = name; if (onPhase) onPhase(name); }
+      function later(fn, ms) { r.timer = setTimeout(function () { if (repair !== r) return; if (document.hidden) { stopRepair(); return; } fn(); }, ms); }
+      var first = L.FACELETS[r.indices[0]], p = first.pos;
+      function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
+      var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var rx = p[1] ? (p[1] > 0 ? -42 : 42) : -16;
+      var ry = -Math.atan2(p[0], p[2]) * 180 / Math.PI;
+      look(near(rx, view.rx), near(ry, view.ry), !reduce);
+      if (!reduce) built.cube.style.transition += ', opacity .16s ease';
+      built.cubies.forEach(function (c) {
+        Object.keys(c.faces).forEach(function (face) {
+          var index = FACELET_AT[c.pos.join(',') + '|' + face];
+          if (r.indices.indexOf(index) < 0 || !r.after) return;
+          var guide = document.createElement('div'); guide.className = 'validation-arrow'; guide.setAttribute('aria-hidden', 'true');
+          var path = options.kind === 'twist' || options.kind === 'flip'
+            ? 'M10 24 A13 13 0 1 1 31 31 M22 31 H31 V22' : 'M7 22 H27 M20 15 L27 22 L20 29';
+          guide.innerHTML = '<svg viewBox="0 0 44 44"><path class="turn-guide-shadow" d="' + path + '"/><path class="turn-guide-ink" d="' + path + '"/>' +
+            (options.kind === 'paint' ? '<circle cx="35" cy="22" r="5" fill="' + HEX[r.after[index]] + '" stroke="#10252e" stroke-width="1.5"/>' : '') + '</svg>';
+          c.faces[face].appendChild(guide); r.guides.push(guide);
+        });
+      });
+      var piece = r.pieces[0], rotating = piece && (options.kind === 'twist' || options.kind === 'flip');
+      var cubie = rotating && built.cubies.find(function (c) { return c.pos.every(function (v, i) { return v === L.FACELETS[piece[0]].pos[i]; }); });
+      var axis = cubie && cubie.pos, target = 180;
+      if (cubie && options.kind === 'twist') {
+        var from = piece[0], to = piece.find(function (i) { return r.after[i] === names[from]; });
+        var normal = L.FACELETS[L.FACE_INDEX[L.FACELETS[from].face] * 9 + 4].pos;
+        var dest = L.FACELETS[L.FACE_INDEX[L.FACELETS[to].face] * 9 + 4].pos;
+        var cross = [axis[1] * normal[2] - axis[2] * normal[1], axis[2] * normal[0] - axis[0] * normal[2], axis[0] * normal[1] - axis[1] * normal[0]];
+        target = cross.reduce(function (sum, v, i) { return sum + v * dest[i]; }, 0) > 0 ? -120 : 120;
+      }
+      function pose(t) {
+        if (!cubie) return;
+        var lift = Math.sin(Math.PI * t) * 8;
+        cubie.el.style.transform = base(axis) + ' translate3d(' + axis[0] * lift + 'px,' + -axis[1] * lift + 'px,' + axis[2] * lift + 'px) rotate3d(' + axis[0] + ',' + -axis[1] + ',' + axis[2] + ',' + target * t + 'deg)';
+      }
+      function begin() {
+        r.preview = false; repaint(null); phase('focus');
+        later(function () {
+          phase('turn');
+          if (!cubie) { r.preview = true; repaint(null); }
+          var start = performance.now(), duration = 1400;
+          r.frame = requestAnimationFrame(function animate(now) {
+            if (repair !== r) return;
+            var t = Math.min(1, (now - start) / duration), ease = t * t * (3 - 2 * t);
+            pose(ease);
+            if (t < 1) r.frame = requestAnimationFrame(animate);
+            else {
+              r.preview = true; if (cubie) cubie.el.style.transform = base(cubie.pos);
+              repaint(null); phase('preview');
+              later(function () {
+                phase('reset'); built.cube.classList.add('repair-reset');
+                later(function () { r.preview = false; repaint(null); built.cube.classList.remove('repair-reset'); begin(); }, 200);
+              }, 1300);
+            }
+          });
+        }, 800);
+      }
+      if (reduce) { r.preview = !!r.after; repaint(null); phase(r.after ? 'preview' : 'focus'); }
+      else if (r.after) begin();
+      else { repaint(null); phase('focus'); }
+    }
+
     /* Painting is always on: with a mouse, left paints a sticker (and keeps
      * painting while held) and right drags the cube round. Touch has no right
      * button, so there a drag spins and a tap paints. */
@@ -387,7 +475,13 @@
       return Number(el.dataset.facelet);
     }
     function paintAt(e) {
+      var repairing = !!repair;
+      if (repairing) stopRepair();
       var idx = faceletUnder(e);
+      if (repairing && document.elementFromPoint) {
+        var hit = document.elementFromPoint(e.clientX, e.clientY);
+        idx = hit && hit.dataset && hit.dataset.facelet != null ? Number(hit.dataset.facelet) : null;
+      }
       if (idx != null) onSticker(idx);
     }
     function startDrag(e) {
@@ -411,6 +505,7 @@
       }
       if (mouse && e.button !== 0 && e.button !== 2) return;   // leave the middle button alone
       if (mouse && e.button === 2) e.preventDefault();
+      stopRepair();
       startDrag(e);
     });
     surface.addEventListener('pointermove', function (e) {
@@ -443,6 +538,8 @@
       colours: function (fc) { stopDemo(); faceColour = fc; repaint(null); },
       setNames: function (arr) { stopDemo(); if (arr !== names) clearHints(); names = arr; repaint(null); },
       showMissing: showMissing,
+      showRepair: showRepair,
+      stopRepair: stopRepair,
       onSticker: function (cb) { onSticker = cb; },
       onView: function (cb) { onView = cb; cb(view.rx, view.ry); },
       flash: function () {

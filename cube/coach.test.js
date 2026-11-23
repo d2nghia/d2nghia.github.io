@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const L = require('./solver.js');
 const K = require('./capture.js');
 const P = require('./progress.js');
+const V = require('./validation.js');
 const langContext = { module: { exports: {} }, localStorage: { getItem: () => null } };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'lang.js'), 'utf8'), langContext);
 const LANG = langContext.module.exports;
@@ -126,6 +127,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
   });
   const run = file => vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), context);
   run('progress.js');
+  run('validation.js');
   run('cubeview.js');
   let coach, initial, solution, pendingMove, faceColours, paintSticker;
   if (app) {
@@ -1288,4 +1290,134 @@ test('Solve another one returns to a clean chooser URL, then starts a new cube w
   f.get('go-camera').onclick();
   assert.equal(f.get('screen-capture').hidden, false);
   assert.ok(P.decode(f.window.location.hash).names.every(name => name === null));
+});
+
+function repairCube(pieces = L.CORNERS, n = 0) {
+  const names = Array.from(L.solvedState(), i => ['white', 'red', 'green', 'yellow', 'orange', 'blue'][i]);
+  const before = names.slice(), piece = pieces[n];
+  piece.forEach((index, k) => { names[index] = before[piece[(k + 1) % piece.length]]; });
+  return names;
+}
+
+test('Solve diagnoses on the painted cube immediately; previews do not save or solve until confirmed', () => {
+  for (const pieces of [L.CORNERS, L.EDGES]) {
+    const names = repairCube(pieces);
+    const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+    const originalHash = f.window.location.hash, originalStore = f.storage.get(P.STORE);
+    f.get('cap-solve').onclick();
+    assert.equal(f.get('screen-capture').hidden, false);
+    assert.equal(f.get('screen-check').hidden, true);
+    assert.equal(f.get('screen-coach').hidden, true);
+    assert.equal(f.get('cap-issue').hidden, false);
+    assert.equal(f.get('cap-cube').dataset.validationPhase, 'focus');
+    assert.match(f.get('cap-issue-title').textContent, pieces === L.CORNERS ? /góc/ : /cạnh/);
+    assert.equal(f.get('cap-issue-compare').hidden, false);
+    assert.equal(f.initial, undefined, 'Never call the solver for invalid colours');
+    f.tick(1500);
+    assert.equal(f.get('cap-cube').dataset.validationPhase, 'turn');
+    f.tick(900);
+    assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
+    f.tick(12000);
+    assert.equal(f.window.location.hash, originalHash);
+    assert.equal(f.storage.get(P.STORE), originalStore);
+    assert.deepEqual(P.decode(f.window.location.hash).names, names);
+    f.get('cap-issue-apply').onclick();
+    assert.equal(f.get('cap-issue').hidden, true);
+    assert.equal(f.get('cap-cube').dataset.validationPhase, undefined);
+    assert.equal(f.get('screen-coach').hidden, true, 'Applying a colour correction does not start a lesson');
+    assert.equal(V.assess(P.decode(f.window.location.hash).names).ok, true);
+    assert.equal(f.storage.get(P.STORE), f.window.location.hash);
+    f.get('cap-solve').onclick();
+    assert.equal(f.get('screen-coach').hidden, false);
+    assert.equal(f.tasks.size, 0, 'Solved capture has no leftover repair loop');
+  }
+});
+
+test('other suggestions can be compared, painting dismisses stale diagnoses, and navigation cancels the loop', () => {
+  const names = repairCube();
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+  f.get('cap-solve').onclick();
+  const first = f.get('cap-issue-option').textContent;
+  assert.equal(f.get('cap-issue-prev').disabled, true);
+  f.get('cap-issue-next').onclick();
+  assert.notEqual(f.get('cap-issue-option').textContent, first);
+  assert.equal(f.get('cap-issue-prev').disabled, false);
+  f.get('cap-issue-prev').onclick();
+  assert.equal(f.get('cap-issue-option').textContent, first);
+  f.tick(1500);
+  f.paint(0, names[0]);
+  assert.equal(f.get('cap-issue').hidden, true);
+  assert.equal(f.get('cap-issue-badge').hidden, true);
+  assert.equal(f.tasks.size, 0);
+  const editedHash = f.window.location.hash;
+  f.get('cap-issue-apply').onclick();
+  assert.equal(f.window.location.hash, editedHash, 'A dismissed correction cannot be applied');
+  f.get('cap-solve').onclick();
+  f.get('go-manual').onclick();
+  assert.equal(f.get('cap-issue').hidden, true);
+  assert.equal(f.tasks.size, 0);
+});
+
+test('net entry errors also return to an animated cube and count errors have localized counts', () => {
+  const names = repairCube(); names[1] = 'green';
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'check', names }) });
+  f.get('net-solve').onclick();
+  assert.equal(f.get('screen-check').hidden, true);
+  assert.equal(f.get('screen-capture').hidden, false);
+  assert.equal(f.get('cap-issue-counts').hidden, false);
+  assert.equal(f.get('cap-issue-counts').children.length, 6);
+  assert.match(f.get('cap-issue-title').textContent, /Số ô màu/);
+  assert.equal(f.get('cap-issue-compare').hidden, true, 'No unverified correction for simultaneous errors');
+  assert.equal(f.initial, undefined);
+});
+
+test('repair previews stop in a hidden tab, resume on return, and honor reduced motion until replay requested', () => {
+  const names = repairCube(L.EDGES);
+  const f = fixture({ app: true, persistence: true, autoSolve: false, reducedMotion: true, hash: P.encode({ view: 'capture', names }) });
+  f.get('cap-solve').onclick();
+  assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
+  assert.equal(f.tasks.size, 0);
+  f.get('cap-issue-replay').onclick();
+  f.tick(1100);
+  assert.equal(f.get('cap-cube').dataset.validationPhase, 'turn');
+  f.document.hidden = true; f.listeners.visibilitychange();
+  assert.equal(f.get('cap-cube').dataset.validationPhase, undefined);
+  assert.equal(f.tasks.size, 0);
+  f.document.hidden = false; f.listeners.visibilitychange();
+  assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
+});
+
+test('corner and edge correction rotations map every sticker to its verified destination without a jump', () => {
+  const hex = { white: '#fafafa', yellow: '#ffd400', green: '#00a550', blue: '#1769d6', red: '#e1372b', orange: '#ff8400' };
+  for (const pieces of [L.CORNERS, L.EDGES]) for (let n = 0; n < pieces.length; n++) {
+    const names = repairCube(pieces, n), before = names.slice(), r = V.inspect(names), suggestion = r.suggestions[0];
+    const f = fixture(), host = f.get('cap-cube'), view = f.window.CubeView.create(host);
+    view.setNames(names); view.showRepair(suggestion);
+    const cubies = host.children[0].children.filter(e => e.className === 'cubie');
+    const bases = cubies.map(e => e.style.transform);
+    f.tick(1500);
+    const moving = cubies.filter((e, i) => e.style.transform !== bases[i]);
+    assert.equal(moving.length, 1, 'Rotate only the indicated individual piece');
+    assert.match(moving[0].style.transform, /rotate3d\(/);
+    f.tick(696); // Final frame before the 1400ms rotation completes.
+    const match = moving[0].style.transform.match(/rotate3d\(([^)]+)\)/)[1].split(',').map(parseFloat);
+    const axis = match.slice(0, 3), len = Math.hypot(...axis), angle = (pieces === L.CORNERS ? Math.sign(match[3]) * 120 : 180) * Math.PI / 180;
+    const u = axis.map(v => v / len);
+    const cssNormal = i => { const p = L.FACELETS[L.FACE_INDEX[L.FACELETS[i].face] * 9 + 4].pos; return [p[0], -p[1], p[2]]; };
+    for (const from of pieces[n]) {
+      const v = cssNormal(from), dot = u.reduce((s, a, i) => s + a * v[i], 0);
+      const cross = [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+      const dest = v.map((a, i) => Math.round(a*Math.cos(angle)+cross[i]*Math.sin(angle)+u[i]*dot*(1-Math.cos(angle))));
+      const to = pieces[n].find(i => cssNormal(i).every((a, k) => a === dest[k]));
+      assert.equal(suggestion.after[to], names[from], 'The physical rotation must agree with the recoloured endpoint');
+    }
+    f.tick(32);
+    assert.equal(host.dataset.validationPhase, 'preview');
+    const stickers = cubies.flatMap(e => e.children).filter(e => e.dataset.facelet != null);
+    for (const index of suggestion.indices) assert.equal(stickers.find(e => e.dataset.facelet === index).style.background, hex[suggestion.after[index]]);
+    assert.deepEqual(names, before);
+    view.stopRepair();
+    assert.equal(f.tasks.size, 0);
+    assert.ok(stickers.every(e => e.style.background === hex[names[e.dataset.facelet]]));
+  }
 });

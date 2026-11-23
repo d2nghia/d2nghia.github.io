@@ -471,6 +471,10 @@
       if (CORNER_HOMES.indexOf(ck) < 0) return { ok: false, error: 'corner', hint: 'One corner has a colour mix that cannot exist.' };
       if (seen['c' + ck]) return { ok: false, error: 'corner-dup', hint: 'Two corners look like the same piece.' };
       seen['c' + ck] = 1;
+      var cornerHome = homeLabels(CORNERS[CORNER_HOMES.indexOf(ck)]);
+      if (![0, 1, 2].some(function (shift) {
+        return CORNERS[i].every(function (index, n) { return state[index] === cornerHome[(n + shift) % 3]; });
+      })) return { ok: false, error: 'corner-order', hint: 'A corner has its stickers in a mirrored order — compare its three colours with your real cube.' };
     }
     for (i = 0; i < EDGES.length; i++) {
       var ek = pieceColors(state, EDGES[i]);
