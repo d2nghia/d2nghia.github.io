@@ -478,8 +478,22 @@ body.is-starting .wrap {
 .guide-header { display: grid; gap: 12px; }
 .guide-header h1 { font-size: clamp(1.7rem, 5vw, 2.3rem); }
 .guide-header > p { color: var(--muted); }
-.guide-orientation { display: flex; align-items: center; gap: 8px; font-size: .82rem; }
-.guide-white { width: 15px; height: 15px; border: 1px solid #8992a3; border-radius: 4px; background: var(--c-white); }
+.guide-colours { min-width: 0; margin: 24px 0 12px; padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); }
+.guide-colours legend { padding-inline: 6px; font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
+.guide-colours > p { color: var(--muted); font-size: .85rem; }
+.guide-colour-options { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.guide-colour-choice { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 3px; cursor: pointer; font-size: .8rem; text-transform: capitalize; }
+.guide-swatch { display: grid; place-items: center; width: 46px; height: 46px; border: 2px solid #0003; border-radius: 50%; background: var(--swatch); }
+.guide-swatch > span { visibility: hidden; display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; background: #fff; color: #10252e; font-weight: 800; font-size: 1rem; }
+.guide-colour-choice input:checked + .guide-swatch { outline: 3px solid var(--ink); outline-offset: 4px; }
+.guide-colour-choice input:checked + .guide-swatch > span { visibility: visible; }
+.guide-colour-choice input:focus-visible + .guide-swatch { outline: 3px solid var(--accent); outline-offset: 5px; }
+.guide-hold { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.guide-hold-title { width: 100%; font-size: .8rem; color: var(--muted); }
+.guide-hold-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; background: var(--bg); font-size: .75rem; }
+.guide-hold-chip i { width: 13px; height: 13px; border: 1px solid #0003; border-radius: 3px; }
+.guide-hold-chip strong { font-weight: 700; }
+@media (max-width: 560px) { .guide-colour-options { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } }
 .guide-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 12px 0; margin-block: 12px; background: var(--bg); }
 .guide-nav button { flex: 1; min-width: 0; min-height: 42px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--muted); font-family: var(--font-display); font-weight: 800; cursor: pointer; }
 .guide-nav button[aria-current] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

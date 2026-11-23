@@ -1,7 +1,17 @@
 /** Seven manual stages, with lightweight arrow diagrams built on demand. */
 (function () {
   'use strict';
-  var G = window.CubeStepDiagrams, LANG = window.CubeLang, t = LANG.t;
+  var G = window.CubeStepDiagrams, LANG = window.CubeLang, colourScheme = null;
+  function t(key, vars) {
+    var colours = {};
+    if (colourScheme) {
+      ['base', 'top', 'front'].forEach(function (role) {
+        colours[role] = LANG.colour(colourScheme[role]);
+        colours[role + 'Title'] = colours[role].charAt(0).toUpperCase() + colours[role].slice(1);
+      });
+    }
+    return LANG.t(key, Object.assign(colours, vars || {}));
+  }
   var $ = function (id) { return document.getElementById(id); };
   var selected = {}, expanded = { cross: true }, cards = {}, active = 'cross';
   function node(tag, className, text) {
@@ -25,7 +35,7 @@
     var card = node('details', 'stage-card guide-stage'); card.id = 'step-' + stage.key;
     var summary = node('summary', 'guide-summary'); summary.appendChild(node('span', 'guide-number', index + 1));
     var heading = node('span', 'guide-heading'); heading.appendChild(node('h2', '', t('guide.' + stage.key + '.title'))); heading.appendChild(node('small', '', t('guide.goal'))); summary.appendChild(heading);
-    summary.appendChild(diagram(G.goalSVG(stage.key), 'guide-goal'));
+    summary.appendChild(diagram(G.goalSVG(stage.key, colourScheme.colours), 'guide-goal'));
     var chevron = node('span', 'guide-chevron', '⌄'); chevron.setAttribute('aria-hidden', 'true'); summary.appendChild(chevron); card.appendChild(summary);
     var body = node('div', 'guide-body'), loaded = false; card.appendChild(body);
     function load() {
@@ -34,7 +44,7 @@
       if (stage.key === 'yellowCross') {
         var patterns = node('div', 'guide-patterns');
         [[4], [1, 3, 4], [3, 4, 5], [1, 3, 4, 5, 7]].forEach(function (on, n) {
-          var chip = diagram(G.faceSVG(Array.from({ length: 9 }, function (_, i) { return on.indexOf(i) >= 0; }), G.COLOURS[0]), 'guide-pattern');
+          var chip = diagram(G.faceSVG(Array.from({ length: 9 }, function (_, i) { return on.indexOf(i) >= 0; }), colourScheme.colours[0]), 'guide-pattern');
           chip.appendChild(node('small', '', t('guide.pattern.' + ['dot', 'L', 'line', 'cross'][n])));
           if (n) patterns.appendChild(node('span', 'guide-pattern-next', '→')); patterns.appendChild(chip);
         }); body.appendChild(patterns);
@@ -49,7 +59,7 @@
         strip.innerHTML = '';
         G.lesson(recipe).forEach(function (frame, n) {
           var item = node('li', 'guide-frame' + (frame.move ? '' : ' is-result'));
-          item.appendChild(diagram(G.cubeSVG(frame.state, frame.move), 'guide-cube'));
+          item.appendChild(diagram(G.cubeSVG(frame.state, frame.move, null, colourScheme.colours), 'guide-cube'));
           item.appendChild(node('span', 'guide-frame-label', frame.move ? String(n + 1) : t('guide.result')));
           if (frame.move) item.appendChild(node('span', 'sr-only', t('move.' + frame.move))); strip.appendChild(item);
         });
@@ -77,6 +87,14 @@
     if (expanded[stage.key]) { load(); card.open = true; } return card;
   }
   function build() {
+    $('guide-nav').hidden = !colourScheme;
+    $('stages').hidden = !colourScheme;
+    $('guide-orientation').hidden = !colourScheme;
+    if (!colourScheme) return;
+    ['base', 'top', 'front'].forEach(function (role) {
+      $('guide-' + role + '-dot').style.background = G.HEX[colourScheme[role]];
+      $('guide-' + role + '-name').textContent = LANG.colour(colourScheme[role]);
+    });
     $('stages').innerHTML = ''; $('guide-nav').innerHTML = ''; cards = {};
     $('guide-nav').setAttribute('aria-label', t('steps.title'));
     G.STAGES.forEach(function (stage, i) {
@@ -85,5 +103,12 @@
       button.onclick = function () { showStage(stage.key); }; $('guide-nav').appendChild(button); $('stages').appendChild(buildStage(stage, i));
     }); labelNav();
   }
+  document.querySelectorAll('input[name="guide-base"]').forEach(function (input) {
+    input.onchange = function () {
+      if (!input.checked) return;
+      colourScheme = G.orientation(input.value);
+      build();
+    };
+  });
   LANG.apply(document); build(); $('lang-switch').onclick = function () { LANG.toggle(); }; LANG.onChange(build);
 })();

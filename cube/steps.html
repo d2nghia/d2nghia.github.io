@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123g">
+<link rel="stylesheet" href="style.css?v=20261123h">
 </head>
 <body class="manual-guide">
 <div class="wrap">
@@ -17,10 +17,27 @@
   <header class="guide-header">
     <h1 data-t="guide.title">Solve with pictures</h1>
     <p data-t="guide.lede">Open a step. Follow the arrows in order.</p>
-    <p class="guide-orientation"><span class="guide-white" aria-hidden="true"></span><span data-t="guide.orientation">White underneath · Green facing you</span></p>
   </header>
-  <nav class="guide-nav" id="guide-nav" aria-label="Steps"></nav>
-  <main id="stages"></main>
+  <fieldset class="guide-colours">
+    <legend data-t="guide.pick">Which colour shall we start with?</legend>
+    <p data-t="guide.pick.hint">Choose a centre sticker on your cube.</p>
+    <div class="guide-colour-options">
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="white"><span class="guide-swatch" style="--swatch:var(--c-white)"><span aria-hidden="true">✓</span></span><span data-t="colour.white">white</span></label>
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="yellow"><span class="guide-swatch" style="--swatch:var(--c-yellow)"><span aria-hidden="true">✓</span></span><span data-t="colour.yellow">yellow</span></label>
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="green"><span class="guide-swatch" style="--swatch:var(--c-green)"><span aria-hidden="true">✓</span></span><span data-t="colour.green">green</span></label>
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="blue"><span class="guide-swatch" style="--swatch:var(--c-blue)"><span aria-hidden="true">✓</span></span><span data-t="colour.blue">blue</span></label>
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="red"><span class="guide-swatch" style="--swatch:var(--c-red)"><span aria-hidden="true">✓</span></span><span data-t="colour.red">red</span></label>
+      <label class="guide-colour-choice"><input class="sr-only" type="radio" name="guide-base" value="orange"><span class="guide-swatch" style="--swatch:var(--c-orange)"><span aria-hidden="true">✓</span></span><span data-t="colour.orange">orange</span></label>
+    </div>
+    <div class="guide-hold" id="guide-orientation" hidden aria-live="polite">
+      <span class="guide-hold-title" data-t="guide.hold">Hold your cube like this:</span>
+      <span class="guide-hold-chip"><span data-t="guide.hold.base">Bottom</span><i id="guide-base-dot" aria-hidden="true"></i><strong id="guide-base-name"></strong></span>
+      <span class="guide-hold-chip"><span data-t="guide.hold.top">Top</span><i id="guide-top-dot" aria-hidden="true"></i><strong id="guide-top-name"></strong></span>
+      <span class="guide-hold-chip"><span data-t="guide.hold.front">Front</span><i id="guide-front-dot" aria-hidden="true"></i><strong id="guide-front-name"></strong></span>
+    </div>
+  </fieldset>
+  <nav class="guide-nav" id="guide-nav" aria-label="Steps" hidden></nav>
+  <main id="stages" hidden></main>
 
   <footer class="page-links home-navigation">
     <a class="home-button" href="index.html" id="go-home">
@@ -30,9 +47,9 @@
   </footer>
 </div>
 
-<script src="lang.js?v=20261123e"></script>
+<script src="lang.js?v=20261123f"></script>
 <script src="solver.js?v=20261122b"></script>
-<script src="step-diagrams.js?v=20261123a"></script>
-<script src="steps.js?v=20261123a"></script>
+<script src="step-diagrams.js?v=20261123b"></script>
+<script src="steps.js?v=20261123b"></script>
 </body>
 </html>

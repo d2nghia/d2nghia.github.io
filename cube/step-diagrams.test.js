@@ -90,3 +90,74 @@ test('case labels match the white corner direction and the middle edge destinati
     assert.equal(start[top], L.FACE_INDEX[recipe.id === 'right' ? 'R' : 'L']);
   }
 });
+
+test('all six starting colours produce real cube rotations with the correct opposite colour', () => {
+  const opposite = { white: 'yellow', yellow: 'white', green: 'blue', blue: 'green', red: 'orange', orange: 'red' };
+  const standard = ['white', 'red', 'green', 'yellow', 'orange', 'blue'];
+  for (const base of G.NAMES) {
+    const scheme = G.orientation(base);
+    assert.equal(scheme.base, base);
+    assert.equal(scheme.names[L.FACE_INDEX.D], base);
+    assert.equal(scheme.top, opposite[base]);
+    assert.equal(scheme.names[L.FACE_INDEX.U], opposite[base]);
+    assert.equal(scheme.names[L.FACE_INDEX.F], scheme.front);
+    assert.equal(new Set(scheme.names).size, 6);
+    assert.ok(L.ORIENTATIONS.some(seq => {
+      let names = standard;
+      for (const rotation of seq) names = L.rotateFaces(names, rotation);
+      return names.every((name, i) => name === scheme.names[i]);
+    }), base + ' must rotate the whole cube without mirroring or swapping individual stickers');
+    assert.equal([...G.goalSVG('cross', scheme.colours).matchAll(new RegExp('fill="' + G.HEX[base] + '"', 'g'))].length, 5);
+    assert.equal([...G.goalSVG('yellowCross', scheme.colours).matchAll(new RegExp('fill="' + G.HEX[scheme.top] + '"', 'g'))].length, 5);
+    const svg = G.cubeSVG(L.solvedState(), null, null, scheme.colours);
+    for (const face of ['U', 'F', 'R']) {
+      const index = L.FACE_INDEX[face] * 9 + 4;
+      const fill = svg.match(new RegExp('data-facelet="' + index + '"[^>]*fill="([^"]+)"'))[1];
+      assert.equal(fill, G.HEX[scheme.names[L.FACE_INDEX[face]]]);
+    }
+  }
+  for (const invalid of [null, '', 'purple', 'WHITE']) assert.throws(() => G.orientation(invalid));
+});
+
+test('colour choices recolour the diagrams without changing their moves or arrow geometry', () => {
+  const original = G.COLOURS.slice();
+  for (const stage of G.STAGES) for (const recipe of stage.recipes) {
+    const frames = G.lesson(recipe);
+    for (const base of G.NAMES) for (const frame of frames) {
+      const standard = G.cubeSVG(frame.state, frame.move);
+      const custom = G.cubeSVG(frame.state, frame.move, null, G.orientation(base).colours);
+      const geometry = svg => svg.replace(/fill="#[a-fA-F0-9]+"/g, 'fill="colour"');
+      assert.equal(geometry(custom), geometry(standard));
+    }
+  }
+  assert.deepEqual(G.COLOURS, original);
+});
+
+test('both languages describe the chosen base and opposite colour throughout every manual case', () => {
+  const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+  const context = { module: { exports: {} }, document: { querySelectorAll: () => [], documentElement: {} }, localStorage: { getItem: () => null, setItem() {} } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'lang.js'), 'utf8'), context);
+  const lang = context.module.exports;
+  const keys = G.STAGES.flatMap(stage => [
+    'guide.' + stage.key + '.title', 'guide.' + stage.key + '.setup', 'steps.' + stage.key + '.note',
+    ...stage.recipes.flatMap(recipe => ['steps.' + stage.key + '.' + recipe.id, 'steps.' + stage.key + '.' + recipe.id + '.note'])
+  ]);
+  for (const locale of ['vi', 'en']) {
+    lang.set(locale);
+    for (const base of G.NAMES) {
+      const scheme = G.orientation(base), vars = {};
+      for (const role of ['base', 'top', 'front']) {
+        vars[role] = lang.colour(scheme[role]);
+        vars[role + 'Title'] = vars[role][0].toUpperCase() + vars[role].slice(1);
+      }
+      for (const key of keys) {
+        const text = lang.t(key, vars);
+        assert.notEqual(text, key);
+        assert.doesNotMatch(text, /\{\w+\}/, locale + ': ' + key);
+        if (base === 'green') assert.doesNotMatch(text, locale === 'vi' ? /trắng|vàng/i : /white|yellow/i, key);
+      }
+      assert.ok(lang.t('guide.cross.title', vars).toLowerCase().includes(vars.base));
+      assert.ok(lang.t('guide.yellowCross.title', vars).toLowerCase().includes(vars.top));
+    }
+  }
+});
