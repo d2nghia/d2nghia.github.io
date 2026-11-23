@@ -184,6 +184,8 @@
   function labelShare() {
     $('share-status').textContent = t('share.' + shareStatus);
     $('share-copied').hidden = shareStatus !== 'copied';
+    $('share-failed').hidden = shareStatus !== 'failed';
+    $('share-popover').setAttribute('title', t('share.' + shareStatus));
     $('share-url').setAttribute('aria-label', t('share.url'));
   }
 
@@ -205,8 +207,6 @@
     shareStatus = 'copying';
     labelShare();
     $('share-popover').hidden = false;
-    $('share-url').style.height = 'auto';
-    if ($('share-url').scrollHeight) $('share-url').style.height = Math.min(180, $('share-url').scrollHeight + 2) + 'px';
     $('share-progress').setAttribute('aria-expanded', 'true');
     shareTimer = setTimeout(hideShare, 4000);
     try {

@@ -1106,6 +1106,7 @@ test('one share click copies the current URL, shows confirmation, and dismisses 
   assert.equal(f.get('share-progress').getAttribute('aria-expanded'), 'true');
   assert.equal(f.get('share-status').textContent, LANG.t('share.copied'));
   assert.equal(f.get('share-copied').hidden, false);
+  assert.equal(f.get('share-failed').hidden, true);
   assert.equal(f.document.activeElement, f.get('share-progress'));
   f.tick(3999);
   assert.equal(f.get('share-popover').hidden, false);
@@ -1169,6 +1170,7 @@ test('clipboard fallback copies the selected URL and a blocked copy never shows 
     f.document.execCommand = () => false;
     await f.get('share-progress').onclick();
     assert.equal(f.get('share-copied').hidden, true);
+    assert.equal(f.get('share-failed').hidden, false);
     assert.equal(f.get('share-status').textContent, LANG.t('share.failed'));
     assert.equal(f.get('share-popover').hidden, false);
     f.tick(8000);

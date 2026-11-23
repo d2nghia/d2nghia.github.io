@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123b">
+<link rel="stylesheet" href="style.css?v=20261123c">
 </head>
 <body>
 <div class="wrap">
@@ -22,9 +22,10 @@
       <div class="share-popover" id="share-popover" hidden>
         <p class="share-status" role="status">
           <span class="share-copied" id="share-copied" hidden><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <span id="share-status"></span>
+          <span class="share-failed" id="share-failed" hidden><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z" stroke-linejoin="round"/><path d="M12 9v5m0 2v2"/></svg></span>
+          <span id="share-status" class="sr-only"></span>
         </p>
-        <textarea class="share-url" id="share-url" rows="3" readonly spellcheck="false" dir="ltr" aria-label="Progress URL"></textarea>
+        <input class="share-url" id="share-url" type="text" readonly spellcheck="false" dir="ltr" aria-label="Progress URL">
       </div>
     </div>
     <button class="lang-switch" id="lang-switch" data-t="lang.other">Tiếng Việt</button>
@@ -130,6 +131,6 @@
 <script src="progress.js?v=20261123b"></script>
 <script src="cubeview.js?v=20261122f"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261123d"></script>
+<script src="app.js?v=20261123e"></script>
 </body>
 </html>
