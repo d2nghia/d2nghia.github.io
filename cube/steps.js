@@ -1,207 +1,89 @@
-/**
- * The step guide: the seven stages drawn as cube pictures.
- *
- * Every row of pictures is generated, not drawn by hand. Each recipe's starting
- * cube is made by running the recipe backwards from a finished cube, so doing
- * the pictured turns in order always lands on the finished cube — the pictures
- * cannot drift out of step with the moves.
- */
+/** Seven manual stages, with lightweight arrow diagrams built on demand. */
 (function () {
   'use strict';
-  var L = window.CubeLib, V = window.CubeView;
+  var G = window.CubeStepDiagrams, LANG = window.CubeLang, t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
-
-  var MASKS = {
-    bottom: function (f) { return f.face === 'D' || (f.face !== 'U' && f.row === 2); },
-    twoLayers: function (f) { return f.face === 'D' || (f.face !== 'U' && f.row >= 1); },
-    top: function (f) { return f.face === 'U'; },
-    topRow: function (f) { return f.face === 'U' || (f.face !== 'D' && f.row === 0); },
-    all: null
-  };
-  function maskFor(name) {
-    var fn = MASKS[name];
-    if (!fn) return null;
-    return function (i) { return fn(L.FACELETS[i]); };
+  var selected = {}, expanded = { cross: true }, cards = {}, active = 'cross';
+  function node(tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text != null) el.textContent = text;
+    return el;
   }
-
-  var LANG = window.CubeLang, t = LANG.t;
-
-  /* Structure here, words in lang.js: each stage names the parts of the
-   * dictionary it needs, so neither language can drift from the other. */
-  var STAGES = [
-    { key: 'cross', n: 1, mask: 'bottom', shapes: null,
-      recipes: [{ id: 'petal', alg: 'F2' }, { id: 'gap', alg: 'D' }] },
-    { key: 'corners', n: 2, mask: 'bottom', shapes: null,
-      recipes: [{ id: 'right', alg: "R U R'" }, { id: 'front', alg: "F' U' F" }, { id: 'top', alg: "R U2 R' U' R U R'" }] },
-    { key: 'belt', n: 3, mask: 'twoLayers', shapes: null,
-      recipes: [{ id: 'right', alg: "U R U' R' U' F' U F" }, { id: 'left', alg: "U' L' U L U F U' F'" }] },
-    { key: 'yellowCross', n: 4, mask: 'top',
-      shapes: [
-        { id: 'dot', cells: [0, 0, 0, 0, 1, 0, 0, 0, 0] },
-        { id: 'L', cells: [0, 0, 0, 0, 1, 1, 0, 1, 0] },
-        { id: 'line', cells: [0, 0, 0, 1, 1, 1, 0, 0, 0] }],
-      recipes: [{ id: 'cross', alg: "F R U R' U' F'" }] },
-    { key: 'yellowFace', n: 5, mask: 'top',
-      shapes: [
-        { id: 'one', cells: [0, 1, 0, 1, 1, 1, 1, 1, 0] },
-        { id: 'none', cells: [0, 1, 0, 1, 1, 1, 0, 1, 0] },
-        { id: 'two', cells: [1, 1, 0, 1, 1, 1, 0, 1, 1] }],
-      recipes: [{ id: 'fish', alg: "R U R' U R U2 R'" }, { id: 'back', alg: "R U2 R' U' R U' R'" }] },
-    { key: 'cornerPlace', n: 6, mask: 'topRow', shapes: null,
-      recipes: [{ id: 'circle', alg: "R' F R' B2 R F' R' B2 R2" }, { id: 'back', alg: "R B' R F2 R' B R F2 R2" }] },
-    { key: 'lastEdges', n: 7, mask: 'topRow', shapes: null,
-      recipes: [{ id: 'circle', alg: "R U' R U R U R U' R' U' R2" }, { id: 'back', alg: "R2 U R U R' U' R' U' R' U R'" }] }
-  ];
-
-  /* ---------------- the shared cube at the top ---------------- */
-  var view = V.create($('watch-cube'));
-  var watch = { moves: [], i: 0, start: L.solvedState(), playing: false };
-  function moveWords(m) { return t('move.' + m); }
-
-  function loadWatch(title, start, moves) {
-    watch.start = start; watch.moves = moves; watch.i = 0; watch.playing = false;
-    view.set(start);
-    $('watch-what').textContent = title;
-    $('watch-word').textContent = t('steps.turns', { n: moves.length });
-    $('watch').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  function diagram(markup, className) { var el = node('span', className); el.innerHTML = markup; return el; }
+  function showStage(key) {
+    var card = cards[key]; card.load(); card.el.open = true; expanded[key] = true; active = key; labelNav();
+    requestAnimationFrame(function () { card.el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); });
   }
-  function stepWatch() {
-    if (view.busy() || watch.i >= watch.moves.length) return Promise.resolve(false);
-    var m = watch.moves[watch.i++];
-    $('watch-word').textContent = moveWords(m) + '   (' + watch.i + '/' + watch.moves.length + ')';
-    return view.play(m).then(function () {
-      if (watch.i >= watch.moves.length) $('watch-word').textContent = t('steps.done');
-      return true;
+  function labelNav() {
+    document.querySelectorAll('[data-guide-stage]').forEach(function (button) {
+      button.setAttribute('aria-expanded', String(!!expanded[button.dataset.guideStage]));
+      if (button.dataset.guideStage === active) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
     });
   }
-  function playWatch() {
-    if (watch.playing) return;
-    if (watch.i >= watch.moves.length) { view.set(watch.start); watch.i = 0; }
-    watch.playing = true;
-    (function loop() {
-      stepWatch().then(function (more) {
-        if (!more || watch.i >= watch.moves.length) { watch.playing = false; return; }
-        setTimeout(loop, 220);
+  function buildStage(stage, index) {
+    var card = node('details', 'stage-card guide-stage'); card.id = 'step-' + stage.key;
+    var summary = node('summary', 'guide-summary'); summary.appendChild(node('span', 'guide-number', index + 1));
+    var heading = node('span', 'guide-heading'); heading.appendChild(node('h2', '', t('guide.' + stage.key + '.title'))); heading.appendChild(node('small', '', t('guide.goal'))); summary.appendChild(heading);
+    summary.appendChild(diagram(G.goalSVG(stage.key), 'guide-goal'));
+    var chevron = node('span', 'guide-chevron', '⌄'); chevron.setAttribute('aria-hidden', 'true'); summary.appendChild(chevron); card.appendChild(summary);
+    var body = node('div', 'guide-body'), loaded = false; card.appendChild(body);
+    function load() {
+      if (loaded) return; loaded = true;
+      body.appendChild(node('p', 'guide-setup', t('guide.' + stage.key + '.setup')));
+      if (stage.key === 'yellowCross') {
+        var patterns = node('div', 'guide-patterns');
+        [[4], [1, 3, 4], [3, 4, 5], [1, 3, 4, 5, 7]].forEach(function (on, n) {
+          var chip = diagram(G.faceSVG(Array.from({ length: 9 }, function (_, i) { return on.indexOf(i) >= 0; }), G.COLOURS[0]), 'guide-pattern');
+          chip.appendChild(node('small', '', t('guide.pattern.' + ['dot', 'L', 'line', 'cross'][n])));
+          if (n) patterns.appendChild(node('span', 'guide-pattern-next', '→')); patterns.appendChild(chip);
+        }); body.appendChild(patterns);
+      }
+      var cases = node('div', 'guide-cases'); cases.setAttribute('role', 'group'); cases.setAttribute('aria-label', t('guide.case'));
+      var strip = node('ol', 'guide-sequence'); strip.setAttribute('aria-label', t('guide.sequence'));
+      var help = node('details', 'guide-help'); help.appendChild(node('summary', '', t('guide.help'))); help.appendChild(node('p', '', t('steps.' + stage.key + '.note')));
+      var caseNote = node('p'); help.appendChild(caseNote); var notation = node('code'); help.appendChild(notation);
+      function choose(recipe) {
+        selected[stage.key] = recipe.id;
+        Array.prototype.forEach.call(cases.children, function (button) { button.setAttribute('aria-pressed', String(button.dataset.case === recipe.id)); });
+        strip.innerHTML = '';
+        G.lesson(recipe).forEach(function (frame, n) {
+          var item = node('li', 'guide-frame' + (frame.move ? '' : ' is-result'));
+          item.appendChild(diagram(G.cubeSVG(frame.state, frame.move), 'guide-cube'));
+          item.appendChild(node('span', 'guide-frame-label', frame.move ? String(n + 1) : t('guide.result')));
+          if (frame.move) item.appendChild(node('span', 'sr-only', t('move.' + frame.move))); strip.appendChild(item);
+        });
+        caseNote.textContent = t('steps.' + stage.key + '.' + recipe.id + '.note'); notation.textContent = recipe.alg;
+      }
+      stage.recipes.forEach(function (recipe) {
+        var button = node('button', 'guide-case', t('steps.' + stage.key + '.' + recipe.id)); button.type = 'button'; button.dataset.case = recipe.id;
+        button.onclick = function () { choose(recipe); }; cases.appendChild(button);
       });
-    })();
-  }
-  $('watch-play').onclick = playWatch;
-  $('watch-step').onclick = function () { watch.playing = false; stepWatch(); };
-  $('watch-reset').onclick = function () {
-    watch.playing = false; watch.i = 0; view.set(watch.start);
-    $('watch-word').textContent = watch.moves.length ? t('steps.back') : '';
-  };
-
-  /* ---------------- building a stage ---------------- */
-  function flatFace(cells) {
-    var g = document.createElement('div');
-    g.className = 'grid3 flat';
-    cells.forEach(function (v) {
-      var d = document.createElement('div');
-      d.style.background = v ? V.HEX.yellow : '#b9bfcc';
-      g.appendChild(d);
-    });
-    return g;
-  }
-
-  function buildRecipe(stage, recipe) {
-    var base = 'steps.' + stage.key + '.' + recipe.id;
-    var moves = L.parse(recipe.alg);
-    var start = L.applyMoves(L.solvedState(), L.inverse(moves));
-    var block = document.createElement('div');
-    block.className = 'recipe';
-
-    var head = document.createElement('div');
-    head.className = 'recipe-head';
-    head.innerHTML = '<h3>' + t(base) + '</h3>';
-    var letters = document.createElement('code');
-    letters.className = 'letters-line';
-    letters.textContent = recipe.alg;
-    letters.hidden = !$('show-letters').checked;
-    head.appendChild(letters);
-    var watchBtn = document.createElement('button');
-    watchBtn.className = 'btn ghost small';
-    watchBtn.textContent = t('steps.watchthis');
-    watchBtn.onclick = function () {
-      loadWatch(t('steps.of', { n: stage.n }) + ' · ' + t(base), start, moves);
-      playWatch();
-    };
-    head.appendChild(watchBtn);
-    block.appendChild(head);
-
-    var note = document.createElement('p');
-    note.className = 'small muted';
-    note.textContent = t(base + '.note');
-    block.appendChild(note);
-
-    var strip = document.createElement('div');
-    strip.className = 'strip';
-    var mask = maskFor(stage.mask);
-    var state = start;
-    moves.forEach(function (m, i) {
-      strip.appendChild(V.figure(state, {
-        size: moves.length > 8 ? 104 : 124, mask: mask, move: m, caption: (i + 1) + '.'
-      }));
-      state = L.applyMoves(state, [m]);
-    });
-    strip.appendChild(V.figure(state, { size: moves.length > 8 ? 104 : 124, mask: mask, caption: t('steps.donecap') }));
-    block.appendChild(strip);
-    return block;
-  }
-
-  function buildStage(stage) {
-    var card = document.createElement('section');
-    card.className = 'card stage-card';
-
-    var top = document.createElement('div');
-    top.className = 'stage-top';
-    var words = document.createElement('div');
-    words.innerHTML = '<p class="small muted">' + t('steps.of', { n: stage.n }) + '</p>' +
-      '<h2>' + t('stage.' + stage.key + '.name') + '</h2>' +
-      '<p style="margin-top:6px">' + t('stage.' + stage.key + '.goal') + '</p>' +
-      '<p class="small muted" style="margin-top:8px">' + t('steps.' + stage.key + '.note') + '</p>';
-    top.appendChild(words);
-    var done = V.figure(L.solvedState(), { size: 132, mask: maskFor(stage.mask), caption: t('steps.finished') });
-    top.appendChild(done);
-    card.appendChild(top);
-
-    if (stage.shapes) {
-      var shapes = document.createElement('div');
-      shapes.className = 'shapes';
-      stage.shapes.forEach(function (s) {
-        var item = document.createElement('div');
-        item.className = 'shape';
-        item.appendChild(flatFace(s.cells));
-        var p = document.createElement('p');
-        p.innerHTML = '<b>' + t('shape.' + s.id) + '</b><br><span class="small muted">' + t('shape.' + s.id + '.tell') + '</span>';
-        item.appendChild(p);
-        shapes.appendChild(item);
-      });
-      card.appendChild(shapes);
+      if (stage.recipes.length > 1) body.appendChild(cases);
+      body.appendChild(strip); body.appendChild(help);
+      if (index < G.STAGES.length - 1) {
+        var next = node('button', 'linkish guide-next', t('guide.next', { n: index + 2 })); next.type = 'button';
+        next.onclick = function () { showStage(G.STAGES[index + 1].key); }; body.appendChild(next);
+      }
+      choose(stage.recipes.find(function (recipe) { return recipe.id === selected[stage.key]; }) || stage.recipes[0]);
     }
-
-    stage.recipes.forEach(function (r) { card.appendChild(buildRecipe(stage, r)); });
-    return card;
+    cards[stage.key] = { el: card, load: load };
+    var wasOpen = !!expanded[stage.key];
+    card.ontoggle = function () {
+      if (card.open === wasOpen) return;
+      wasOpen = card.open; expanded[stage.key] = card.open;
+      if (card.open) { active = stage.key; load(); } labelNav();
+    };
+    if (expanded[stage.key]) { load(); card.open = true; } return card;
   }
-
-  var host = $('stages');
-  function buildAll() {
-    host.innerHTML = '';
-    STAGES.forEach(function (stage) { host.appendChild(buildStage(stage)); });
+  function build() {
+    $('stages').innerHTML = ''; $('guide-nav').innerHTML = ''; cards = {};
+    $('guide-nav').setAttribute('aria-label', t('steps.title'));
+    G.STAGES.forEach(function (stage, i) {
+      var button = node('button', '', i + 1); button.type = 'button'; button.dataset.guideStage = stage.key;
+      button.setAttribute('aria-controls', 'step-' + stage.key); button.setAttribute('aria-label', (i + 1) + '. ' + t('guide.' + stage.key + '.title'));
+      button.onclick = function () { showStage(stage.key); }; $('guide-nav').appendChild(button); $('stages').appendChild(buildStage(stage, i));
+    }); labelNav();
   }
-  LANG.apply(document);
-  buildAll();
-  $('lang-switch').onclick = function () { LANG.toggle(); };
-  LANG.onChange(function () {
-    buildAll();
-    $('watch-word').textContent = '';
-    $('show-letters').checked = false;
-  });
-
-  document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-
-  $('show-letters').onchange = function () {
-    var on = this.checked;
-    Array.prototype.forEach.call(document.querySelectorAll('.letters-line'), function (el) { el.hidden = !on; });
-  };
+  LANG.apply(document); build(); $('lang-switch').onclick = function () { LANG.toggle(); }; LANG.onChange(build);
 })();
