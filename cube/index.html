@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123d">
+<link rel="stylesheet" href="style.css?v=20261123e">
 </head>
 <body class="is-starting">
 <div class="wrap">
@@ -34,24 +34,32 @@
   <!-- ============ start ============ -->
   <section class="screen hero" id="screen-start">
     <header>
-      <h1 data-t="start.title">Cube Coach</h1>
+      <p class="mode-brand" data-t="start.title">Cube Coach</p>
+      <h1 data-t="start.visual.title">How do you like to learn?</h1>
       <p class="small warn-line" id="progress-error" role="alert" data-t="progress.invalid" hidden>This progress link could not be opened. Your saved progress has not been changed.</p>
-      <p class="lede" data-t="start.choose">How would you like to solve your cube?</p>
+      <p class="lede" data-t="start.visual.lede">One turn at a time, or the whole guide on one page? Choose what feels easiest to follow.</p>
     </header>
     <div class="mode-options">
       <button class="mode-card mode-guided" id="go-camera" type="button" aria-labelledby="guided-title" aria-describedby="guided-description">
-        <span class="mode-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="5" width="22" height="22" rx="4"/><path d="M5 12h22M5 20h22M12 5v22M20 5v22"/></svg></span>
-        <span class="mode-title" id="guided-title" data-t="start.guided">Guided solving</span>
-        <span class="mode-description" id="guided-description" data-t="start.guided.description">Show your cube or enter its colours. Follow one turn at a time.</span>
-        <span class="mode-arrow" aria-hidden="true">→</span>
+        <span class="mode-preview" id="guided-preview" aria-hidden="true"><span class="mode-preview-label" data-t="start.preview.turn">Step 1 · See the turn</span></span>
+        <span class="mode-copy">
+          <span class="mode-title" id="guided-title" data-t="start.guided.previewTitle">See each turn</span>
+          <span class="mode-description" id="guided-description" data-t="start.guided.description">Enter your cube's colours. The 3D cube shows which face to turn and in which direction.</span>
+          <span class="mode-cta"><span data-t="start.guided">Guided solving</span><span aria-hidden="true">→</span></span>
+        </span>
       </button>
       <a class="mode-card mode-self" id="go-steps" href="steps.html" aria-labelledby="self-title" aria-describedby="self-description">
-        <span class="mode-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8C12 5 6 5 3 6v21c4-2 9-1 13 1 4-2 9-3 13-1V6c-3-1-9-1-13 2v20"/><path d="M7 12h5M7 17h5M20 12h5M20 17h5"/></svg></span>
-        <span class="mode-title" id="self-title" data-t="start.self">Solve on your own</span>
-        <span class="mode-description" id="self-description" data-t="start.self.description">See all seven steps on one page and learn at your own pace.</span>
-        <span class="mode-arrow" aria-hidden="true">→</span>
+        <span class="mode-preview mode-paper" aria-hidden="true">
+          <span class="mode-sheet"><span class="mode-sheet-title" data-t="steps.title">The seven steps</span><span class="mode-sheet-grid" id="instructions-preview"></span></span>
+        </span>
+        <span class="mode-copy">
+          <span class="mode-title" id="self-title" data-t="start.self.previewTitle">See the whole solution</span>
+          <span class="mode-description" id="self-description" data-t="start.self.description">Read all seven illustrated steps on one page. Turn, practise, and learn at your own pace.</span>
+          <span class="mode-cta"><span data-t="start.self.open">Open the guide</span><span aria-hidden="true">→</span></span>
+        </span>
       </a>
     </div>
+    <p class="mode-method" data-t="start.method">Both use an easy-to-follow, layer-by-layer method.</p>
   </section>
 
   <!-- ============ capture ============ -->
@@ -131,11 +139,11 @@
   </p>
 </div>
 
-<script src="lang.js?v=20261123b"></script>
+<script src="lang.js?v=20261123c"></script>
 <script src="solver.js?v=20261122b"></script>
 <script src="progress.js?v=20261123b"></script>
 <script src="cubeview.js?v=20261122f"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261123f"></script>
+<script src="app.js?v=20261123g"></script>
 </body>
 </html>

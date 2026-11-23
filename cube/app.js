@@ -26,7 +26,9 @@
   var $ = function (id) { return document.getElementById(id); };
   var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
   var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying', newCubeRequested = false;
+  var modePreviewsReady = false;
   function show(screen) {
+    if (screen === 'start') renderModePreviews();
     hideShare();
     $('share-tools').hidden = screen === 'start';
     $('go-home').hidden = screen === 'start';
@@ -40,6 +42,30 @@
       $('screen-' + s).hidden = s !== screen;
     });
     window.scrollTo(0, 0);
+  }
+
+  function renderModePreviews() {
+    if (modePreviewsReady) return;
+    modePreviewsReady = true;
+    // A static illustration uses the same cube renderer as the lesson. It
+    // neither creates a lesson nor reads or changes the child's saved cube.
+    $('guided-preview').appendChild(window.CubeView.figure(L.applyMoves(L.solvedState(), L.parse('R U F')), { size: 155, move: 'R' }));
+    ['cross', 'corners', 'belt', 'yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'].forEach(function (stage, n) {
+      var step = document.createElement('span');
+      step.className = 'mode-sheet-step';
+      var face = document.createElement('span');
+      face.className = 'mode-mini-face';
+      for (var i = 0; i < 9; i++) {
+        var cell = document.createElement('i');
+        if ([1, 3, 4, 5, 7].indexOf(i) >= 0 || n > 3) cell.className = 'is-coloured';
+        face.appendChild(cell);
+      }
+      var label = document.createElement('small');
+      label.setAttribute('data-t', 'stage.' + stage + '.short');
+      label.textContent = t('stage.' + stage + '.short');
+      step.appendChild(face); step.appendChild(label);
+      $('instructions-preview').appendChild(step);
+    });
   }
 
   /* ================= sticker grids ================= */

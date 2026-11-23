@@ -66,6 +66,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
         return null;
       },
       querySelectorAll() { return []; }, querySelector() { return null; },
+      insertAdjacentHTML(position, markup) { this.markup = (this.markup || '') + markup; },
       appendChild(child) { this.children.push(child); child.parent = this; },
       remove() { this.parent.children = this.parent.children.filter(c => c !== this); }
     };
