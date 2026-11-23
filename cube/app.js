@@ -862,8 +862,9 @@
     var controls = $('coach-controls');
     var drag = null, reference = null;
     function controlsSpace() {
-      // Leave room for wrapped labels below the centered panel on small screens.
-      var space = 2 * (controls.offsetHeight + 56);
+      // Keep wrapped step controls and the fixed home button clear of the
+      // centered panel, including when it is resized to fill the viewport.
+      var space = 2 * (controls.offsetHeight + 84);
       section.style.setProperty('--coach-controls-space', space + 'px');
       return space;
     }

@@ -814,7 +814,7 @@ test('corner resizing works with mouse and touch, keeps cube orientation, and cl
     assert.equal(panel.style.height, '360px');
     handle.emit('pointermove', event(10000, 10000));
     assert.equal(section.style.width, '1168px');
-    assert.equal(panel.style.height, '676px');
+    assert.equal(panel.style.height, '620px');
     handle.emit('pointercancel', event(10000, 10000));
     assert.equal(panel.classList.contains('is-resizing'), false);
     f.document.documentElement.clientWidth = 500;
