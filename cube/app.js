@@ -187,7 +187,7 @@
       var shared = P.decode(hash);
       if (shared) { restoreProgress(shared); return true; }
       var params = new URLSearchParams(hash.slice(1));
-      if (params.has('v') || params.has('cube')) {
+      if (params.has('p') || params.has('v') || params.has('cube')) {
         // Do not replace a saved lesson with a malformed or incomplete link.
         $('progress-error').hidden = false;
         return true;

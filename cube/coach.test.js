@@ -97,7 +97,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
     Object.assign(window.location, { pathname: parsed.pathname, search: parsed.search, hash: parsed.hash });
   } };
   const context = vm.createContext({
-    window, self: window, document, URLSearchParams, Int8Array, performance: { now: () => now },
+    window, self: window, document, URLSearchParams, Int8Array, btoa, atob, performance: { now: () => now },
     ResizeObserver: class {
       constructor(callback) { this.callback = callback; resizeObservers.push(this); }
       observe(host) { this.host = host; }
@@ -861,7 +861,7 @@ test('every selected step survives reload and shared URLs restore the exact less
     track.children[index].onclick({ detail: 0 });
     const hash = f.window.location.hash;
     assert.equal(f.storage.get(P.STORE), hash);
-    assert.equal(new URLSearchParams(hash.slice(1)).get('step'), String(index + 1));
+    assert.equal(P.decode(hash).session.cursor, index);
     const shared = fixture({ app: true, persistence: true, hash, autoSolve: false });
     const reloaded = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
     for (const restored of [shared, reloaded]) {
@@ -882,7 +882,7 @@ test('confirmations and undo are saved before their animations finish', async ()
   f.get('coach-next').onclick();
   const next = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
   assert.deepEqual(next.coach.get(), L.applyMoves(f.initial, ['U']));
-  assert.equal(new URLSearchParams(next.window.location.hash.slice(1)).get('step'), '2');
+  assert.equal(P.decode(next.window.location.hash).session.cursor, 1);
   await f.settle();
   const stable = f.window.location.hash;
   f.tick(15000);
@@ -890,7 +890,7 @@ test('confirmations and undo are saved before their animations finish', async ()
   f.get('coach-back').onclick();
   const back = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
   assert.deepEqual(back.coach.get(), f.initial);
-  assert.equal(new URLSearchParams(back.window.location.hash.slice(1)).get('step'), '1');
+  assert.equal(P.decode(back.window.location.hash).session.cursor, 0);
 });
 
 test('painting and clearing capture colours update both the URL and local storage immediately', () => {
@@ -1061,4 +1061,26 @@ test('autofill still produces a shareable URL when local storage is unavailable'
   assert.equal(P.decode(f.window.location.hash).view, 'capture');
   const shared = fixture({ app: true, persistence: true, autoSolve: false, hash: f.window.location.hash });
   assert.equal(shared.window.location.hash, f.window.location.hash);
+});
+
+test('version 1 shared links and local saves migrate to Base64 while keeping the cube and step', () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  f.get('coach-move-track').children[1].onclick({ detail: 0 });
+  const current = P.decode(f.window.location.hash), s = current.session;
+  const keys = ['cross', 'corners', 'belt', 'yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'];
+  const params = new URLSearchParams({ v: '1', view: 'coach', cube: current.names.map(c => c[0]).join(''),
+    step: s.cursor + 1, turns: s.moves.map(m => m.length === 1 ? m : m[0].toLowerCase()).join(''),
+    goals: s.targets.map(key => keys.indexOf(key)).join('') });
+  const old = '#' + params;
+  for (const config of [{ hash: old }, { storage: new Map([[P.STORE, old]]) }]) {
+    const restored = fixture({ app: true, persistence: true, autoSolve: false, ...config });
+    assert.match(restored.window.location.hash, /^#p=2\./);
+    assert.deepEqual(restored.coach.get(), f.coach.get());
+    assert.equal(restored.get('coach-progress').textContent, f.get('coach-progress').textContent);
+    assert.equal(restored.storage.get(P.STORE), restored.window.location.hash);
+  }
+  const storage = new Map(f.storage);
+  const invalid = fixture({ app: true, persistence: true, storage, hash: '#p=2.invalid', autoSolve: false });
+  assert.equal(invalid.get('progress-error').hidden, false);
+  assert.equal(storage.get(P.STORE), f.window.location.hash);
 });
