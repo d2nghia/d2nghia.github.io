@@ -51,8 +51,14 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
       setPointerCapture(id) { this.capturedPointer = id; },
       releasePointerCapture() { this.capturedPointer = null; },
       focus() { document.activeElement = this; },
+      select() { this.focus(); this.selected = true; },
+      contains(node) {
+        for (; node; node = node.parent) if (node === this) return true;
+        return false;
+      },
       getBoundingClientRect() { return { left: 16, top: 20, width: 728, height: 454 }; },
       closest(selector) {
+        if (selector === '#share-tools' && ['share-progress', 'share-url', 'share-tools'].includes(this.id)) return get('share-tools');
         if (selector === 'button[data-step]' && this.dataset.step != null) return this;
         if (selector === '#coach-move-track, #coach-resize') {
           for (let node = this; node; node = node.parent) if (['coach-move-track', 'coach-resize'].includes(node.id)) return node;
@@ -84,7 +90,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
   };
   const window = {
     CubeLib: { ...L }, CubeCapture: K,
-    location: { pathname: '/cube/index.html', search: search ?? (persistence ? '' : '?autofill=random'), hash },
+    location: { origin: 'https://example.test', pathname: '/cube/index.html', search: search ?? (persistence ? '' : '?autofill=random'), hash },
     innerHeight: 900, scrollTo() {},
     addEventListener(name, fn) { (windowListeners[name] ||= []).push(fn); },
     matchMedia: () => ({ matches: reducedMotion }),
@@ -1085,4 +1091,126 @@ test('version 1 and 2 shared links and local saves migrate to compressed URLs wh
   const invalid = fixture({ app: true, persistence: true, storage, hash: '#p=3.invalid', autoSolve: false });
   assert.equal(invalid.get('progress-error').hidden, false);
   assert.equal(storage.get(P.STORE), f.window.location.hash);
+});
+
+test('one share click copies the current URL, shows confirmation, and dismisses after four seconds', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] }), copied = [];
+  f.window.navigator = { clipboard: { async writeText(url) { copied.push(url); } } };
+  f.get('coach-move-track').children[1].onclick({ detail: 0 });
+  f.get('share-progress').focus();
+  await f.get('share-progress').onclick();
+  assert.deepEqual(copied, ['https://example.test/cube/index.html' + f.window.location.hash]);
+  assert.equal(P.decode(new URL(copied[0]).hash).session.cursor, 1);
+  assert.equal(f.get('share-popover').hidden, false);
+  assert.equal(f.get('share-url').value, copied[0]);
+  assert.equal(f.get('share-progress').getAttribute('aria-expanded'), 'true');
+  assert.equal(f.get('share-status').textContent, LANG.t('share.copied'));
+  assert.equal(f.get('share-copied').hidden, false);
+  assert.equal(f.document.activeElement, f.get('share-progress'));
+  f.tick(3999);
+  assert.equal(f.get('share-popover').hidden, false);
+  f.tick(1);
+  assert.equal(f.get('share-popover').hidden, true);
+  assert.equal(f.get('share-progress').getAttribute('aria-expanded'), 'false');
+});
+
+test('sharing works for entered colours and Done, and is hidden before a cube is started', async () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false }), copied = [];
+  f.window.navigator = { clipboard: { async writeText(url) { copied.push(url); } } };
+  assert.equal(f.get('share-tools').hidden, true);
+  await f.get('share-progress').onclick();
+  assert.equal(copied.length, 0);
+  f.get('go-manual').onclick();
+  assert.equal(f.get('share-tools').hidden, false);
+  await f.get('share-progress').onclick();
+  assert.equal(P.decode(new URL(copied.at(-1)).hash).view, 'check');
+  f.get('go-camera').onclick();
+  assert.equal(f.get('share-popover').hidden, true);
+  f.paint(0, 'red');
+  await f.get('share-progress').onclick();
+  assert.equal(P.decode(new URL(copied.at(-1)).hash).names[0], 'red');
+  const done = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  done.window.navigator = f.window.navigator;
+  done.get('coach-move-track').children[done.moves.length].onclick({ detail: 0 });
+  await done.get('share-progress').onclick();
+  const saved = P.decode(new URL(copied.at(-1)).hash);
+  assert.equal(saved.session.cursor, saved.session.moves.length);
+});
+
+test('sharing a turn in flight preserves its saved step even with unavailable History API and storage', async () => {
+  const f = fixture({ app: true, persistence: true, storageBlocked: true, scramble: ['U2'] }), copied = [];
+  f.window.navigator = { clipboard: { async writeText(url) { copied.push(url); } } };
+  f.window.history.replaceState = () => { throw new Error('History is blocked'); };
+  f.get('coach-next').onclick();
+  await f.get('share-progress').onclick();
+  const saved = P.decode(new URL(copied[0]).hash);
+  assert.equal(saved.session.cursor, 1);
+  assert.equal(P.decode(f.window.location.hash).session.cursor, 0);
+  await f.settle();
+  assert.equal(P.decode(new URL(copied[0]).hash).session.cursor, 1);
+});
+
+test('clipboard fallback copies the selected URL and a blocked copy never shows a success checkmark', async () => {
+  for (const available of [true, false]) {
+    const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
+    if (available) f.window.navigator = { clipboard: { writeText: () => Promise.reject(new Error('Denied')) } };
+    let attempts = 0;
+    f.document.execCommand = command => {
+      attempts++; assert.equal(command, 'copy');
+      assert.equal(f.get('share-url').selected, true);
+      assert.match(f.get('share-url').value, /^https:\/\/example.test\/cube\/index.html#p=/);
+      return true;
+    };
+    f.get('share-progress').focus();
+    await f.get('share-progress').onclick();
+    assert.equal(attempts, 1);
+    assert.equal(f.get('share-copied').hidden, false);
+    assert.equal(f.document.activeElement, f.get('share-progress'));
+    f.document.execCommand = () => false;
+    await f.get('share-progress').onclick();
+    assert.equal(f.get('share-copied').hidden, true);
+    assert.equal(f.get('share-status').textContent, LANG.t('share.failed'));
+    assert.equal(f.get('share-popover').hidden, false);
+    f.tick(8000);
+    assert.equal(f.get('share-popover').hidden, true);
+  }
+});
+
+test('repeated share clicks refresh the timer and stale clipboard replies cannot reopen a dismissed popover', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] }), pending = [];
+  f.window.navigator = { clipboard: { writeText: () => new Promise(resolve => pending.push(resolve)) } };
+  const first = f.get('share-progress').onclick();
+  f.tick(3000);
+  const second = f.get('share-progress').onclick();
+  pending[0](); await first;
+  assert.equal(f.get('share-status').textContent, LANG.t('share.copying'));
+  pending[1](); await second;
+  f.tick(3999);
+  assert.equal(f.get('share-popover').hidden, false);
+  f.tick(1);
+  assert.equal(f.get('share-popover').hidden, true);
+  const third = f.get('share-progress').onclick();
+  f.listeners.pointerdown({ target: f.get('share-tools') });
+  assert.equal(f.get('share-popover').hidden, false);
+  f.listeners.pointerdown({ target: f.get('coach-cube') });
+  pending[2](); await third;
+  assert.equal(f.get('share-popover').hidden, true);
+  const fourth = f.get('share-progress').onclick();
+  f.tick(4000); pending[3](); await fourth;
+  assert.equal(f.get('share-popover').hidden, true, 'A stalled Clipboard API must not keep the popover open');
+});
+
+test('sharing preserves native keyboard activation, and Escape closes the popover without changing steps', async () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  f.window.navigator = { clipboard: { async writeText() {} } };
+  const hash = f.window.location.hash;
+  f.listeners.keydown({ key: ' ', target: f.get('share-progress'), preventDefault() { assert.fail('Allow native Share activation'); } });
+  await f.get('share-progress').onclick();
+  f.listeners.keydown({ key: 'ArrowLeft', target: f.get('share-url'), preventDefault() { assert.fail('Allow URL selection'); } });
+  let prevented = false;
+  f.listeners.keydown({ key: 'Escape', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(f.get('share-popover').hidden, true);
+  assert.equal(f.document.activeElement, f.get('share-progress'));
+  assert.equal(f.window.location.hash, hash);
 });

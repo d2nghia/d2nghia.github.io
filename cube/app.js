@@ -25,7 +25,10 @@
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
+  var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying';
   function show(screen) {
+    hideShare();
+    $('share-tools').hidden = screen === 'start';
     currentScreen = screen;
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
@@ -157,6 +160,9 @@
     var params = new URLSearchParams(window.location.search);
     if (params.get('autofill') === 'random') params.delete('autofill');
     var query = params.toString(), search = query ? '?' + query : '';
+    // Keep the share link accurate even if the History API is unavailable,
+    // or a confirmed turn is still animating toward its saved step.
+    progressURL = window.location.origin + window.location.pathname + search + hash;
     // Replacing the URL keeps Back from filling up with every sticker and turn.
     try {
       if (window.location.hash !== hash || window.location.search !== search) {
@@ -166,6 +172,55 @@
     catch (e) { /* a restricted frame can still save progress locally */ }
     try { localStorage.setItem(P.STORE, hash); }
     catch (e) { /* the shareable URL still works when storage is unavailable */ }
+  }
+
+  function hideShare() {
+    clearTimeout(shareTimer);
+    shareRequest++;
+    $('share-popover').hidden = true;
+    $('share-progress').setAttribute('aria-expanded', 'false');
+  }
+
+  function labelShare() {
+    $('share-status').textContent = t('share.' + shareStatus);
+    $('share-copied').hidden = shareStatus !== 'copied';
+    $('share-url').setAttribute('aria-label', t('share.url'));
+  }
+
+  function copyShareFallback() {
+    var active = document.activeElement, copied = false;
+    try {
+      $('share-url').select();
+      copied = document.execCommand('copy');
+    } catch (e) { /* leave the link available for manual copying */ }
+    if (active && active.focus) active.focus({ preventScroll: true });
+    return copied;
+  }
+
+  async function shareProgress() {
+    if (!progressURL || $('share-tools').hidden) return;
+    clearTimeout(shareTimer);
+    var request = ++shareRequest, url = progressURL, copied = false;
+    $('share-url').value = url;
+    shareStatus = 'copying';
+    labelShare();
+    $('share-popover').hidden = false;
+    $('share-url').style.height = 'auto';
+    if ($('share-url').scrollHeight) $('share-url').style.height = Math.min(180, $('share-url').scrollHeight + 2) + 'px';
+    $('share-progress').setAttribute('aria-expanded', 'true');
+    shareTimer = setTimeout(hideShare, 4000);
+    try {
+      if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
+        await window.navigator.clipboard.writeText(url);
+        copied = true;
+      }
+    } catch (e) { /* try copying the selectable URL if the Clipboard API is blocked */ }
+    if (request !== shareRequest) return;
+    if (!copied) copied = copyShareFallback();
+    shareStatus = copied ? 'copied' : 'failed';
+    labelShare();
+    clearTimeout(shareTimer);
+    shareTimer = setTimeout(hideShare, copied ? 4000 : 8000);
   }
 
   function restoreProgress(progress) {
@@ -891,6 +946,7 @@
   wirePanelResize();
   $('lang-switch').onclick = function () { LANG.toggle(); };
   LANG.onChange(function () {
+    labelShare();
     labelResizeHandle();
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
@@ -907,11 +963,22 @@
   $('done-again').onclick = function () { if (!cubeView.busy()) show('start'); };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
+  $('share-progress').onclick = shareProgress;
+  document.addEventListener('pointerdown', function (e) {
+    if (!$('share-popover').hidden && !($('share-tools').contains(e.target))) hideShare();
+  });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('share-popover').hidden) {
+      hideShare();
+      $('share-progress').focus({ preventScroll: true });
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape' && cam.on) stopCamera();
     if (!session || $('screen-coach').hidden || e.defaultPrevented || e.isComposing ||
         e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     var target = e.target;
+    if (target && target.closest && target.closest('#share-tools')) return;
     if (target && target.closest && target.closest('#coach-move-track, #coach-resize')) return;
     if (target && (target.isContentEditable || (target.closest &&
         target.closest('input, textarea, select, [role="textbox"], [role="slider"]')))) return;

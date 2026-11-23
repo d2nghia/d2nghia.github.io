@@ -18,6 +18,11 @@
 
   var VI = {
     'lang.other': 'English',
+    'share.button': 'Chia sẻ',
+    'share.copying': 'Đang sao chép liên kết…',
+    'share.copied': 'Đã sao chép liên kết!',
+    'share.failed': 'Chưa sao chép được. Bạn có thể chọn liên kết để sao chép.',
+    'share.url': 'Liên kết tiến độ',
 
     'colour.white': 'trắng', 'colour.yellow': 'vàng', 'colour.green': 'xanh lá',
     'colour.blue': 'xanh dương', 'colour.red': 'đỏ', 'colour.orange': 'cam',
@@ -214,6 +219,11 @@
 
   var EN = {
     'lang.other': 'Tiếng Việt',
+    'share.button': 'Share',
+    'share.copying': 'Copying link…',
+    'share.copied': 'Link copied!',
+    'share.failed': 'Could not copy automatically. Select the link to copy it.',
+    'share.url': 'Progress URL',
 
     'colour.white': 'white', 'colour.yellow': 'yellow', 'colour.green': 'green',
     'colour.blue': 'blue', 'colour.red': 'red', 'colour.orange': 'orange',
