@@ -870,6 +870,8 @@ test('every selected step survives reload and shared URLs restore the exact less
     assert.equal(P.decode(hash).session.cursor, index);
     const shared = fixture({ app: true, persistence: true, hash, autoSolve: false });
     const reloaded = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+    assert.equal(reloaded.get('screen-start').hidden, false);
+    reloaded.get('go-camera').onclick();
     for (const restored of [shared, reloaded]) {
       assert.equal(restored.get('screen-coach').hidden, false);
       assert.equal(restored.solution, undefined, 'Saved moves must survive future solver changes');
@@ -887,6 +889,7 @@ test('confirmations and undo are saved before their animations finish', async ()
   const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
   f.get('coach-next').onclick();
   const next = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+  next.get('go-camera').onclick();
   assert.deepEqual(next.coach.get(), L.applyMoves(f.initial, ['U']));
   assert.equal(P.decode(next.window.location.hash).session.cursor, 1);
   await f.settle();
@@ -895,6 +898,7 @@ test('confirmations and undo are saved before their animations finish', async ()
   assert.equal(f.window.location.hash, stable, 'Repeating previews must not advance saved progress');
   f.get('coach-back').onclick();
   const back = fixture({ app: true, persistence: true, storage: new Map(f.storage), autoSolve: false });
+  back.get('go-camera').onclick();
   assert.deepEqual(back.coach.get(), f.initial);
   assert.equal(P.decode(back.window.location.hash).session.cursor, 0);
 });
@@ -910,6 +914,7 @@ test('painting and clearing capture colours update both the URL and local storag
   assert.equal(f.storage.get(P.STORE), hash);
   for (const config of [{ hash }, { storage: new Map(f.storage) }]) {
     const restored = fixture({ app: true, persistence: true, autoSolve: false, ...config });
+    if (config.storage) restored.get('go-camera').onclick();
     assert.equal(restored.get('screen-capture').hidden, false);
     assert.deepEqual(P.decode(restored.window.location.hash).names, saved.names);
   }
@@ -959,10 +964,12 @@ test('valid progress links still work with blocked storage, and local saving sur
   assert.equal(P.decode(noHistory.storage.get(P.STORE)).view, 'coach');
 });
 
-test('older saved colours migrate automatically and corrupt local progress does not break startup', () => {
+test('older saved colours migrate when guided solving is chosen and corrupt local progress does not break startup', () => {
   const names = Array(54).fill(null); names[4] = 'yellow'; names[9] = 'orange';
   const storage = new Map([['cube-coach/cube2', JSON.stringify({ names })], [P.STORE, '{invalid}']]);
   const migrated = fixture({ app: true, persistence: true, storage, autoSolve: false });
+  assert.equal(migrated.get('screen-start').hidden, false);
+  migrated.get('go-camera').onclick();
   assert.equal(migrated.get('screen-capture').hidden, false);
   assert.deepEqual(P.decode(storage.get(P.STORE)).names, names);
   const broken = fixture({ app: true, persistence: true, storage: new Map([[P.STORE, 'broken']]), autoSolve: false });
@@ -998,6 +1005,7 @@ test('autofill generates a new cube and saves a URL that restores it instead of 
   assert.deepEqual(JSON.parse(storage.get('cube-coach/cube2')).names, expected);
   for (const config of [{ hash }, { storage }]) {
     const restored = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['F'], ...config });
+    if (config.storage) restored.get('go-camera').onclick();
     assert.equal(restored.get('screen-capture').hidden, false);
     assert.equal(restored.window.location.hash, hash);
     assert.deepEqual(P.decode(restored.window.location.hash).names, expected);
@@ -1039,6 +1047,7 @@ test('an autofilled lesson can be solved, advanced, refreshed, and shared at the
   assert.equal(P.decode(f.window.location.hash).session.cursor, 1);
   for (const config of [{ hash: f.window.location.hash }, { storage: new Map(f.storage) }]) {
     const restored = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['F'], ...config });
+    if (config.storage) restored.get('go-camera').onclick();
     assert.equal(restored.solution, undefined, 'Restore the saved lesson without generating or solving another cube');
     assert.deepEqual(restored.coach.get(), f.coach.get());
     assert.equal(restored.get('coach-progress').textContent, f.get('coach-progress').textContent);
@@ -1082,6 +1091,7 @@ test('version 1 and 2 shared links and local saves migrate to compressed URLs wh
   for (const config of [{ hash: old }, { storage: new Map([[P.STORE, old]]) },
     { hash: packed }, { storage: new Map([[P.STORE, packed]]) }]) {
     const restored = fixture({ app: true, persistence: true, autoSolve: false, ...config });
+    if (config.storage) restored.get('go-camera').onclick();
     assert.match(restored.window.location.hash, /^#p=3\./);
     assert.deepEqual(restored.coach.get(), f.coach.get());
     assert.equal(restored.get('coach-progress').textContent, f.get('coach-progress').textContent);
@@ -1125,7 +1135,7 @@ test('sharing works for entered colours and Done, and is hidden before a cube is
   assert.equal(f.get('share-tools').hidden, false);
   await f.get('share-progress').onclick();
   assert.equal(P.decode(new URL(copied.at(-1)).hash).view, 'check');
-  f.get('go-camera').onclick();
+  f.get('net-redo').onclick();
   assert.equal(f.get('share-popover').hidden, true);
   f.paint(0, 'red');
   await f.get('share-progress').onclick();
@@ -1215,4 +1225,66 @@ test('sharing preserves native keyboard activation, and Escape closes the popove
   assert.equal(f.get('share-popover').hidden, true);
   assert.equal(f.document.activeElement, f.get('share-progress'));
   assert.equal(f.window.location.hash, hash);
+});
+
+test('the bare index stays on the mode picker until guided solving is chosen, without changing any saved progress', () => {
+  const prior = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  prior.get('coach-move-track').children[1].onclick({ detail: 0 });
+  const names = Array(54).fill(null); names[4] = 'white'; names[18] = 'green';
+  for (const hash of [prior.window.location.hash, P.encode({ view: 'capture', names }), P.encode({ view: 'check', names })]) {
+    const storage = new Map([[P.STORE, hash], ['cube-coach/cube2', JSON.stringify({ names })]]), before = new Map(storage);
+    const f = fixture({ app: true, persistence: true, autoSolve: false, storage });
+    for (const id of ['screen-capture', 'screen-check', 'screen-coach', 'share-tools', 'go-home']) assert.equal(f.get(id).hidden, true);
+    assert.equal(f.get('screen-start').hidden, false);
+    assert.equal(f.get('back-links').hidden, false);
+    assert.equal(f.document.body.classList.contains('is-starting'), true);
+    assert.equal(f.window.location.hash, '');
+    assert.equal(f.replacements.length, 0);
+    assert.equal(f.get('cap-cube').children.length, 0);
+    assert.equal(f.get('coach-cube').children.length, 0);
+    f.tick(15000);
+    assert.deepEqual(storage, before);
+    f.get('go-camera').onclick();
+    assert.equal(f.get('screen-start').hidden, true);
+    assert.equal(f.document.body.classList.contains('is-starting'), false);
+    assert.equal(f.get('go-home').hidden, false);
+    assert.equal(f.get('back-links').hidden, true);
+    assert.deepEqual(P.decode(f.window.location.hash), P.decode(hash));
+    assert.equal(f.solution, undefined, 'Choosing the guide resumes the exact saved lesson without solving again');
+  }
+});
+
+test('guided solving starts colour entry when no usable local progress exists', () => {
+  for (const config of [{}, { storageBlocked: true }, { storage: new Map([[P.STORE, 'invalid']]) }]) {
+    const f = fixture({ app: true, persistence: true, autoSolve: false, ...config });
+    assert.equal(f.get('screen-start').hidden, false);
+    f.get('go-camera').onclick();
+    assert.equal(f.get('screen-capture').hidden, false);
+    assert.ok(P.decode(f.window.location.hash).names.every(name => name === null));
+  }
+});
+
+test('a damaged shared link leaves the choice screen usable and guided solving can resume the untouched local lesson', () => {
+  const saved = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  saved.get('coach-move-track').children[1].onclick({ detail: 0 });
+  const storage = new Map(saved.storage);
+  const f = fixture({ app: true, persistence: true, autoSolve: false, storage, hash: '#p=3.invalid' });
+  assert.equal(f.get('progress-error').hidden, false);
+  assert.equal(storage.get(P.STORE), saved.window.location.hash);
+  f.get('go-camera').onclick();
+  assert.equal(f.get('progress-error').hidden, true);
+  assert.deepEqual(f.coach.get(), saved.coach.get());
+});
+
+test('Solve another one returns to a clean chooser URL, then starts a new cube when the guide is chosen', () => {
+  const f = fixture({ app: true, persistence: true, scramble: ['U2'] });
+  f.get('coach-move-track').children[f.moves.length].onclick({ detail: 0 });
+  const finished = f.storage.get(P.STORE);
+  f.get('done-again').onclick();
+  assert.equal(f.get('screen-start').hidden, false);
+  assert.equal(f.window.location.hash, '');
+  assert.equal(f.storage.get(P.STORE), finished, 'Keep the last cube until the child starts the next one');
+  f.get('go-camera').onclick();
+  assert.equal(f.get('screen-capture').hidden, false);
+  assert.ok(P.decode(f.window.location.hash).names.every(name => name === null));
 });

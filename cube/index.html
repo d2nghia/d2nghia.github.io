@@ -5,13 +5,13 @@
 <meta name="robots" content="noindex">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Cube Coach</title>
-<meta name="description" content="Show your Rubik's cube to the camera and get the next turn, one at a time, in words a kid can follow.">
+<meta name="description" content="Choose guided solving for your Rubik's cube, or learn all seven steps on one page at your own pace.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123c">
+<link rel="stylesheet" href="style.css?v=20261123d">
 </head>
-<body>
+<body class="is-starting">
 <div class="wrap">
   <div class="page-actions">
     <div id="share-tools" hidden>
@@ -33,24 +33,24 @@
 
   <!-- ============ start ============ -->
   <section class="screen hero" id="screen-start">
-    <div class="card">
+    <header>
       <h1 data-t="start.title">Cube Coach</h1>
       <p class="small warn-line" id="progress-error" role="alert" data-t="progress.invalid" hidden>This progress link could not be opened. Your saved progress has not been changed.</p>
-      <p class="lede" data-t="start.lede">Show me your cube and I will tell you one turn at a time, until it is solved. No letters to learn.</p>
-      <ol class="steps">
-        <li data-t="start.step1">Show all six sides to the camera.</li>
-        <li data-t="start.step2">Check the colours I read — tap any sticker I get wrong.</li>
-        <li data-t="start.step3">Follow the turns. One turn, one button.</li>
-      </ol>
-      <div class="row" style="margin-top:16px">
-        <button class="btn" id="go-camera" data-t="start.camera">Show me your cube 📷</button>
-        <a class="btn ghost" href="steps.html" style="text-decoration:none; display:inline-block"><span data-t="start.steps">Just show me the steps 📖</span></a>
-        <button class="btn ghost" id="go-demo" data-t="start.demo">Try a practice cube 🎲</button>
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button class="linkish" id="go-manual" data-t="start.manual">No camera? Tap the colours in instead</button>
-      </div>
-      <p class="small muted" style="margin-top:12px" data-t="start.privacy">Works best in good light. The camera picture never leaves this page — nothing is uploaded.</p>
+      <p class="lede" data-t="start.choose">How would you like to solve your cube?</p>
+    </header>
+    <div class="mode-options">
+      <button class="mode-card mode-guided" id="go-camera" type="button" aria-labelledby="guided-title" aria-describedby="guided-description">
+        <span class="mode-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="5" width="22" height="22" rx="4"/><path d="M5 12h22M5 20h22M12 5v22M20 5v22"/></svg></span>
+        <span class="mode-title" id="guided-title" data-t="start.guided">Guided solving</span>
+        <span class="mode-description" id="guided-description" data-t="start.guided.description">Show your cube or enter its colours. Follow one turn at a time.</span>
+        <span class="mode-arrow" aria-hidden="true">→</span>
+      </button>
+      <a class="mode-card mode-self" id="go-steps" href="steps.html" aria-labelledby="self-title" aria-describedby="self-description">
+        <span class="mode-icon"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8C12 5 6 5 3 6v21c4-2 9-1 13 1 4-2 9-3 13-1V6c-3-1-9-1-13 2v20"/><path d="M7 12h5M7 17h5M20 12h5M20 17h5"/></svg></span>
+        <span class="mode-title" id="self-title" data-t="start.self">Solve on your own</span>
+        <span class="mode-description" id="self-description" data-t="start.self.description">See all seven steps on one page and learn at your own pace.</span>
+        <span class="mode-arrow" aria-hidden="true">→</span>
+      </a>
     </div>
   </section>
 
@@ -80,6 +80,10 @@
 
     <div class="row center">
       <button class="btn go" id="cap-solve" data-t="cap.solve">Solve it ▶</button>
+    </div>
+    <div class="row center cap-alternatives">
+      <button class="linkish" id="go-demo" data-t="start.demo">Try a practice cube 🎲</button>
+      <button class="linkish" id="go-manual" data-t="start.manual">No camera? Tap the colours in instead</button>
     </div>
   </section>
 
@@ -122,15 +126,16 @@
   </section>
 
   <p class="small muted page-links">
-    <a href="/linktree/" style="color:inherit" data-t="steps.back.links">← back to the links</a>
+    <a href="index.html" id="go-home" style="color:inherit" data-t="start.home" hidden>← Choose how to solve</a>
+    <a href="/linktree/" id="back-links" style="color:inherit" data-t="steps.back.links">← back to the links</a>
   </p>
 </div>
 
-<script src="lang.js?v=20261123a"></script>
+<script src="lang.js?v=20261123b"></script>
 <script src="solver.js?v=20261122b"></script>
 <script src="progress.js?v=20261123b"></script>
 <script src="cubeview.js?v=20261122f"></script>
 <script src="capture.js?v=20261121d"></script>
-<script src="app.js?v=20261123e"></script>
+<script src="app.js?v=20261123f"></script>
 </body>
 </html>

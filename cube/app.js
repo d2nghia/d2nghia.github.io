@@ -25,11 +25,14 @@
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
   var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
-  var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying';
+  var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying', newCubeRequested = false;
   function show(screen) {
     hideShare();
     $('share-tools').hidden = screen === 'start';
+    $('go-home').hidden = screen === 'start';
+    $('back-links').hidden = screen !== 'start';
     currentScreen = screen;
+    document.body.classList.toggle('is-starting', screen === 'start');
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
@@ -236,7 +239,7 @@
     saveProgress();
   }
 
-  function restoreStartup() {
+  function restoreSharedProgress() {
     var hash = window.location.hash || '';
     if (hash) {
       var shared = P.decode(hash);
@@ -248,6 +251,10 @@
         return true;
       }
     }
+    return false;
+  }
+
+  function restoreSavedProgress() {
     try {
       var saved = P.decode(localStorage.getItem(P.STORE));
       if (saved) { restoreProgress(saved); return true; }
@@ -255,6 +262,16 @@
     var legacy = rememberedCube();
     if (legacy) { restoreProgress({ view: 'capture', names: legacy }); return true; }
     return false;
+  }
+
+  function startGuided() {
+    $('progress-error').hidden = true;
+    if (newCubeRequested) {
+      newCubeRequested = false;
+      startCapture(true);
+      return;
+    }
+    if (!restoreSavedProgress()) startCapture(false);
   }
   function facesLeft() {
     var left = 0;
@@ -951,7 +968,7 @@
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
   });
-  $('go-camera').onclick = function () { startCapture(false); };
+  $('go-camera').onclick = startGuided;
   $('go-manual').onclick = function () { startManual(); };
   $('net-redo').onclick = function () { startCapture(false); };
   $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
@@ -960,7 +977,14 @@
   $('net-solve').onclick = assemble;
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };
-  $('done-again').onclick = function () { if (!cubeView.busy()) show('start'); };
+  $('done-again').onclick = function () {
+    if (cubeView.busy()) return;
+    newCubeRequested = true;
+    stopCamera();
+    show('start');
+    try { window.history.replaceState(null, '', window.location.pathname + window.location.search); }
+    catch (e) { /* the mode picker still works if History is unavailable */ }
+  };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
   $('share-progress').onclick = shareProgress;
@@ -1007,6 +1031,9 @@
     if (cubeView && cubeView.busy()) pendingProgress = progress;
     else restoreProgress(progress);
   });
+  show('start');
+  // Only an explicit shared link or practice request bypasses the mode picker.
+  // Local progress resumes after the child chooses guided solving.
   if (autofillRandom) startCapture(false, null, true);
-  else restoreStartup();
+  else restoreSharedProgress();
 })();
