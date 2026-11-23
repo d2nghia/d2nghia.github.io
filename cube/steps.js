@@ -14,6 +14,7 @@
   }
   var $ = function (id) { return document.getElementById(id); };
   var selected = {}, expanded = { cross: true }, cards = {}, active = 'cross';
+  var faces = ['D', 'U', 'F', 'R', 'B', 'L'], centres = {}, activeFace = 'D', swapMessage = '';
   function node(tag, className, text) {
     var el = document.createElement(tag);
     if (className) el.className = className;
@@ -21,6 +22,58 @@
     return el;
   }
   function diagram(markup, className) { var el = node('span', className); el.innerHTML = markup; return el; }
+  function faceName(face) { return t('guide.face.' + face); }
+  function buildCentrePicker() {
+    var host = $('guide-centre-cards'), palette = $('guide-centre-palette');
+    host.innerHTML = ''; palette.innerHTML = '';
+    host.setAttribute('aria-label', t('guide.centres.title'));
+    var count = faces.filter(function (face) { return !!centres[face]; }).length;
+    $('guide-face-count').textContent = t('guide.centres.count', { n: count });
+    $('guide-face-status').textContent = swapMessage;
+    faces.forEach(function (face) {
+      var colour = centres[face], button = node('button', 'guide-centre-card');
+      button.type = 'button'; button.dataset.face = face;
+      button.setAttribute('aria-pressed', String(face === activeFace));
+      button.setAttribute('aria-label', faceName(face) + ': ' + (colour ? LANG.colour(colour) : t('guide.centres.empty')));
+      var mini = node('span', 'guide-mini-centre'); mini.setAttribute('aria-hidden', 'true');
+      for (var i = 0; i < 9; i++) {
+        var cell = node('i');
+        if (i === 4) { cell.className = 'is-centre'; cell.style.background = colour ? G.HEX[colour] : 'transparent'; cell.textContent = colour ? '' : '?'; }
+        mini.appendChild(cell);
+      }
+      button.appendChild(mini);
+      button.appendChild(node('strong', '', faceName(face)));
+      button.appendChild(node('span', 'guide-centre-value', colour ? LANG.colour(colour) : t('guide.centres.empty')));
+      button.onclick = function () {
+        activeFace = face; swapMessage = ''; buildCentrePicker();
+        host.querySelector('[data-face="' + face + '"]').focus({ preventScroll: true });
+      };
+      host.appendChild(button);
+    });
+    $('guide-face-prompt').textContent = t('guide.centres.prompt', { face: faceName(activeFace).toLowerCase() });
+    G.NAMES.forEach(function (colour) {
+      var button = node('button', 'guide-centre-colour'); button.type = 'button'; button.dataset.centreColour = colour;
+      button.setAttribute('aria-pressed', String(centres[activeFace] === colour));
+      var swatch = node('span', 'guide-swatch'); swatch.style.setProperty('--swatch', G.HEX[colour]); swatch.setAttribute('aria-hidden', 'true');
+      swatch.appendChild(node('span', '', '✓')); button.appendChild(swatch);
+      button.appendChild(node('span', '', LANG.colour(colour)));
+      var owner = faces.find(function (face) { return centres[face] === colour; });
+      button.appendChild(node('small', 'guide-colour-owner', owner ? faceName(owner) : '\u00a0'));
+      button.onclick = function () {
+        var face = activeFace, wasEmpty = !centres[face], result = G.assignCentre(centres, face, colour);
+        centres = result.centres;
+        swapMessage = result.swappedFace ? t('guide.centres.swap', { first: faceName(face).toLowerCase(), second: faceName(result.swappedFace).toLowerCase() }) : '';
+        colourScheme = G.schemeForCentres(centres);
+        if (wasEmpty) activeFace = faces.find(function (key) { return !centres[key]; }) || face;
+        buildCentrePicker(); build();
+        // Rebuilding updates colour-owner hints; keep keyboard focus on the
+        // colour that was just selected as the next face becomes active.
+        palette.querySelector('[data-centre-colour="' + colour + '"]').focus({ preventScroll: true });
+      };
+      palette.appendChild(button);
+    });
+    $('guide-centre-reset').hidden = count === 0;
+  }
   function showStage(key) {
     var card = cards[key]; card.load(); card.el.open = true; expanded[key] = true; active = key; labelNav();
     requestAnimationFrame(function () { card.el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); });
@@ -91,10 +144,8 @@
     $('stages').hidden = !colourScheme;
     $('guide-orientation').hidden = !colourScheme;
     if (!colourScheme) return;
-    ['base', 'top', 'front'].forEach(function (role) {
-      $('guide-' + role + '-dot').style.background = G.HEX[colourScheme[role]];
-      $('guide-' + role + '-name').textContent = LANG.colour(colourScheme[role]);
-    });
+    $('guide-configured-cube').innerHTML = G.cubeSVG(window.CubeLib.solvedState(), null, null, colourScheme.colours);
+    $('guide-configured-note').textContent = t('guide.centres.base', { colour: LANG.colour(colourScheme.base) });
     $('stages').innerHTML = ''; $('guide-nav').innerHTML = ''; cards = {};
     $('guide-nav').setAttribute('aria-label', t('steps.title'));
     G.STAGES.forEach(function (stage, i) {
@@ -103,12 +154,13 @@
       button.onclick = function () { showStage(stage.key); }; $('guide-nav').appendChild(button); $('stages').appendChild(buildStage(stage, i));
     }); labelNav();
   }
-  document.querySelectorAll('input[name="guide-base"]').forEach(function (input) {
-    input.onchange = function () {
-      if (!input.checked) return;
-      colourScheme = G.orientation(input.value);
-      build();
-    };
-  });
-  LANG.apply(document); build(); $('lang-switch').onclick = function () { LANG.toggle(); }; LANG.onChange(build);
+  $('guide-start').onclick = function () { showStage(active); };
+  $('guide-centre-reset').onclick = function () {
+    centres = {}; activeFace = 'D'; colourScheme = null; swapMessage = '';
+    selected = {}; expanded = { cross: true }; active = 'cross';
+    buildCentrePicker(); build();
+  };
+  LANG.apply(document); buildCentrePicker(); build();
+  $('lang-switch').onclick = function () { LANG.toggle(); };
+  LANG.onChange(function () { swapMessage = ''; buildCentrePicker(); build(); });
 })();

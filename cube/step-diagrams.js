@@ -9,6 +9,32 @@
   // The renderer's default is retained for standalone figures. The manual UI
   // asks the child to choose, then supplies a physically rotated colour scheme.
   var COLOURS = ['#ffd400', '#ff8400', '#00a550', '#fafafa', '#e1372b', '#1769d6'];
+  function centreNames(centres) {
+    if (!centres || typeof centres !== 'object') throw new Error('Invalid centre colours');
+    var names = L.FACE_ORDER.map(function (face) {
+      var name = centres[face] == null ? null : centres[face];
+      if (name !== null && NAMES.indexOf(name) < 0) throw new Error('Unknown centre colour');
+      return name;
+    });
+    var filled = names.filter(function (name) { return name !== null; });
+    if (new Set(filled).size !== filled.length) throw new Error('Repeated centre colour');
+    return names;
+  }
+  function schemeForCentres(centres) {
+    var names = centreNames(centres);
+    if (names.indexOf(null) >= 0) return null;
+    // Centre colours define the child's own cube. Do not infer opposites or
+    // handedness from a standard factory colour scheme.
+    return { base: centres.D, top: centres.U, front: centres.F, names: names, colours: names.map(function (name) { return HEX[name]; }) };
+  }
+  function assignCentre(centres, face, colour) {
+    if (L.FACE_ORDER.indexOf(face) < 0 || NAMES.indexOf(colour) < 0) throw new Error('Invalid centre choice');
+    var names = centreNames(centres), next = {}, owner = null;
+    L.FACE_ORDER.forEach(function (key, i) { next[key] = names[i]; if (key !== face && names[i] === colour) owner = key; });
+    if (owner) next[owner] = next[face];
+    next[face] = colour;
+    return { centres: next, swappedFace: owner };
+  }
   function orientation(base) {
     if (NAMES.indexOf(base) < 0) throw new Error('Unknown starting colour');
     var front = base === 'green' || base === 'blue' ? 'white' : 'green';
@@ -107,5 +133,5 @@
     }
     return cubeSVG(L.solvedState(), null, key === 'belt' ? function (f) { return f.face !== 'U' && f.row >= 1; } : key === 'cornerPlace' ? function (f) { return f.face === 'U' || f.row === 0; } : null, colours);
   }
-  return { STAGES: STAGES, COLOURS: COLOURS, NAMES: NAMES, HEX: HEX, orientation: orientation, quarterTurns: quarterTurns, lesson: lesson, cues: cues, project: project, cubeSVG: cubeSVG, faceSVG: faceSVG, goalSVG: goalSVG };
+  return { STAGES: STAGES, COLOURS: COLOURS, NAMES: NAMES, HEX: HEX, schemeForCentres: schemeForCentres, assignCentre: assignCentre, orientation: orientation, quarterTurns: quarterTurns, lesson: lesson, cues: cues, project: project, cubeSVG: cubeSVG, faceSVG: faceSVG, goalSVG: goalSVG };
 });

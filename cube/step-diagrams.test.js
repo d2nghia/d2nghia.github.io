@@ -144,8 +144,9 @@ test('both languages describe the chosen base and opposite colour throughout eve
   ]);
   for (const locale of ['vi', 'en']) {
     lang.set(locale);
-    for (const base of G.NAMES) {
-      const scheme = G.orientation(base), vars = {};
+    const custom = G.schemeForCentres({ D: 'blue', U: 'red', F: 'yellow', R: 'green', B: 'white', L: 'orange' });
+    for (const scheme of G.NAMES.map(base => G.orientation(base)).concat(custom)) {
+      const base = scheme.base, vars = {};
       for (const role of ['base', 'top', 'front']) {
         vars[role] = lang.colour(scheme[role]);
         vars[role + 'Title'] = vars[role][0].toUpperCase() + vars[role].slice(1);
@@ -160,4 +161,63 @@ test('both languages describe the chosen base and opposite colour throughout eve
       assert.ok(lang.t('guide.yellowCross.title', vars).toLowerCase().includes(vars.top));
     }
   }
+});
+
+test('explicit face centres accept all unique colour layouts without inferring opposite or front colours', () => {
+  function permutations(values) {
+    if (!values.length) return [[]];
+    return values.flatMap((value, i) => permutations(values.filter((_, n) => i !== n)).map(rest => [value, ...rest]));
+  }
+  let count = 0;
+  for (const names of permutations(G.NAMES)) {
+    const centres = Object.fromEntries(L.FACE_ORDER.map((face, i) => [face, names[i]]));
+    const scheme = G.schemeForCentres(centres);
+    assert.deepEqual(scheme.names, names);
+    assert.equal(scheme.base, centres.D);
+    assert.equal(scheme.top, centres.U);
+    assert.equal(scheme.front, centres.F);
+    assert.deepEqual(scheme.colours, names.map(name => G.HEX[name]));
+    count++;
+  }
+  assert.equal(count, 720);
+  assert.equal(G.schemeForCentres({}), null);
+  assert.equal(G.schemeForCentres({ D: 'blue', U: 'red', F: 'yellow' }), null);
+  assert.throws(() => G.schemeForCentres({ D: 'blue', U: 'blue' }));
+  assert.throws(() => G.schemeForCentres({ D: 'purple' }));
+});
+
+test('centre assignment leaves other faces empty until selected and swaps used colours when editing', () => {
+  const first = G.assignCentre({}, 'D', 'blue');
+  assert.equal(first.centres.D, 'blue');
+  assert.ok(L.FACE_ORDER.filter(f => f !== 'D').every(f => first.centres[f] === null));
+  assert.equal(first.swappedFace, null);
+  assert.equal(G.schemeForCentres(first.centres), null);
+  const partial = G.assignCentre(first.centres, 'F', 'blue');
+  assert.equal(partial.centres.F, 'blue');
+  assert.equal(partial.centres.D, null);
+  assert.equal(partial.swappedFace, 'D');
+  assert.equal(first.centres.D, 'blue', 'Do not mutate an earlier selection');
+  const custom = Object.freeze({ D: 'blue', U: 'red', F: 'yellow', R: 'green', B: 'white', L: 'orange' });
+  const edited = G.assignCentre(custom, 'F', 'red');
+  assert.equal(edited.centres.F, 'red');
+  assert.equal(edited.centres.U, 'yellow');
+  assert.equal(edited.centres.D, 'blue');
+  assert.equal(edited.swappedFace, 'U');
+  assert.equal(new Set(Object.values(edited.centres)).size, 6);
+  assert.equal(G.schemeForCentres(edited.centres).top, 'yellow');
+  assert.equal(G.assignCentre(custom, 'D', 'blue').swappedFace, null);
+  assert.throws(() => G.assignCentre(custom, 'X', 'red'));
+  assert.throws(() => G.assignCentre(custom, 'F', 'purple'));
+});
+
+test('custom opposite colours appear in the goal images and every visible centre', () => {
+  const centres = { D: 'blue', U: 'red', F: 'yellow', R: 'green', B: 'white', L: 'orange' };
+  const scheme = G.schemeForCentres(centres);
+  const svg = G.cubeSVG(L.solvedState(), null, null, scheme.colours);
+  for (const face of ['U', 'F', 'R']) {
+    const index = L.FACE_INDEX[face] * 9 + 4;
+    assert.equal(svg.match(new RegExp('data-facelet="' + index + '"[^>]*fill="([^"]+)"'))[1], G.HEX[centres[face]]);
+  }
+  assert.equal([...G.goalSVG('cross', scheme.colours).matchAll(/fill="#1769d6"/g)].length, 5);
+  assert.equal([...G.goalSVG('yellowCross', scheme.colours).matchAll(/fill="#e1372b"/g)].length, 5);
 });
