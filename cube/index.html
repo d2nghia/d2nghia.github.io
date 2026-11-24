@@ -13,40 +13,24 @@
 <body class="is-starting">
 <div class="wrap">
   <div class="page-actions">
-    <div id="share-tools" hidden>
-      <button class="btn ghost small share-button" id="share-progress" type="button" aria-controls="share-popover" aria-expanded="false">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
-        <span data-t="share.button">Share</span>
-      </button>
-      <div class="share-popover" id="share-popover" hidden>
-        <p class="share-status" role="status">
-          <span class="share-copied" id="share-copied" hidden><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <span class="share-failed" id="share-failed" hidden><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z" stroke-linejoin="round"/><path d="M12 9v5m0 2v2"/></svg></span>
-          <span id="share-status" class="sr-only"></span>
-        </p>
-        <input class="share-url" id="share-url" type="text" readonly spellcheck="false" dir="ltr" aria-label="Progress URL">
-      </div>
-    </div>
     <button class="lang-switch" id="lang-switch" data-t="lang.other">Tiếng Việt</button>
   </div>
 
-  <!-- ============ start ============ -->
   <section class="screen hero" id="screen-start">
     <header>
       <p class="mode-brand" data-t="start.title">Cube Coach</p>
       <h1 data-t="start.visual.title">How do you like to learn?</h1>
-      <p class="small warn-line" id="progress-error" role="alert" data-t="progress.invalid" hidden>This progress link could not be opened. Your saved progress has not been changed.</p>
       <p class="lede" data-t="start.visual.lede">One turn at a time, or the whole guide on one page? Choose what feels easiest to follow.</p>
     </header>
     <div class="mode-options">
-      <button class="mode-card mode-guided" id="go-camera" type="button" aria-labelledby="guided-title" aria-describedby="guided-description">
+      <a class="mode-card mode-guided" id="go-camera" href="solve.html?fresh=1" aria-labelledby="guided-title" aria-describedby="guided-description">
         <span class="mode-preview" id="guided-preview" aria-hidden="true"><span class="mode-preview-label" data-t="start.preview.turn">Step 1 · See the turn</span></span>
         <span class="mode-copy">
           <span class="mode-title" id="guided-title" data-t="start.guided.previewTitle">See each turn</span>
           <span class="mode-description" id="guided-description" data-t="start.guided.description">Enter your cube's colours. The 3D cube shows which face to turn and in which direction.</span>
           <span class="mode-cta"><span data-t="start.guided">Guided solving</span><span aria-hidden="true">→</span></span>
         </span>
-      </button>
+      </a>
       <a class="mode-card mode-self" id="go-steps" href="steps.html" aria-labelledby="self-title" aria-describedby="self-description">
         <span class="mode-preview mode-paper" aria-hidden="true">
           <span class="mode-sheet"><span class="mode-sheet-title" data-t="steps.title">The seven steps</span><span class="mode-sheet-grid" id="instructions-preview"></span></span>
@@ -61,127 +45,14 @@
     <p class="mode-method" data-t="start.method">Both use an easy-to-follow, layer-by-layer method.</p>
   </section>
 
-  <!-- ============ capture ============ -->
-  <section class="screen" id="screen-capture" hidden>
-    <div class="cap-model">
-      <p class="repair-cube-label" id="cap-issue-badge" hidden></p>
-      <div class="cube-stage" id="cap-cube" aria-label="Your cube. Drag to spin it, click a sticker to paint it."></div>
-      <div class="cam-dock" id="cam-dock" hidden>
-        <div class="cam-wrap" id="cam-wrap">
-          <video id="cam" playsinline muted autoplay></video>
-          <canvas class="cam-overlay" id="cam-overlay"></canvas>
-        </div>
-        <p class="small" id="cam-status"></p>
-        <button class="cam-close" id="cam-close" aria-label="off">×</button>
-      </div>
-    </div>
-
-    <aside class="capture-issue" id="cap-issue" aria-labelledby="cap-issue-title" hidden>
-      <div class="capture-issue-heading">
-        <h2 id="cap-issue-title" role="alert" tabindex="-1"></h2>
-        <button class="linkish repair-replay" id="cap-issue-replay" type="button" data-t="repair.replay">↻ Watch again</button>
-      </div>
-      <p id="cap-issue-hint"></p>
-      <div class="repair-counts" id="cap-issue-counts" hidden></div>
-      <div class="repair-compare" id="cap-issue-compare" hidden>
-        <div class="repair-options">
-          <button class="btn ghost small" id="cap-issue-prev" type="button" aria-label="Previous suggestion">‹</button>
-          <span id="cap-issue-option"></span>
-          <button class="btn ghost small" id="cap-issue-next" type="button" aria-label="Next suggestion">›</button>
-        </div>
-        <p class="small muted" data-t="repair.compare">A colour correction preview. Compare it with your real cube before applying.</p>
-        <button class="btn" id="cap-issue-apply" type="button" data-t="repair.apply">These colours match my cube</button>
-      </div>
-      <details class="repair-help" id="cap-issue-help">
-        <summary data-t="repair.physical.title">The entered colours already match?</summary>
-        <p data-t="repair.physical">If your real cube has this exact pattern, a piece may have been twisted, flipped or put back incorrectly. Ask an adult to check it; ordinary turns cannot solve an impossible pattern.</p>
-      </details>
-    </aside>
-
-    <div class="toolbar" id="cap-tools">
-      <div class="palette" id="cap-palette"></div>
-      <div class="row center">
-        <button class="btn tool" id="cap-open-cam"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/></svg> <span data-t="cap.tool">Auto colour using camera</span></button>
-        <button class="btn ghost tool" id="cap-clear" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 3 7 7-11 11H6l-4-4L14 3Z M8 10l7 7 M10 21h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> <span data-t="cap.clear">Clear all colours</span></button>
-      </div>
-    </div>
-
-    <p class="small warn-line center" id="cap-msg" hidden></p>
-
-    <div class="row center">
-      <button class="btn go" id="cap-solve" data-t="cap.solve">Solve it ▶</button>
-    </div>
-    <section class="history" id="cube-history" aria-labelledby="history-title" hidden>
-      <h2 class="history-title" id="history-title" data-t="history.title">Cubes you have tried</h2>
-      <div class="history-list" id="history-list"></div>
-    </section>
-
-    <div class="confirm-backdrop" id="history-confirm" role="dialog" aria-modal="true" aria-labelledby="history-confirm-title" hidden>
-      <div class="confirm-card">
-        <p class="confirm-title" id="history-confirm-title" data-t="history.confirm.title">Open this cube again?</p>
-        <div class="confirm-cube" id="history-confirm-cube" aria-hidden="true"></div>
-        <p class="small muted" data-t="history.confirm.hint">The colours on the big cube will be replaced by this one.</p>
-        <div class="row center">
-          <button class="btn go" id="history-confirm-yes" type="button" data-t="history.confirm.yes">Open it</button>
-          <button class="btn ghost" id="history-confirm-no" type="button" data-t="history.confirm.no">Not now</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ check / net editor ============ -->
-  <section class="screen" id="screen-check" hidden>
-    <div class="card" id="check-note">
-      <p class="tell" id="check-title"></p>
-      <p class="small muted" id="check-hint"></p>
-    </div>
-    <div class="card">
-      <p class="small muted" data-t="net.tap">Tap any sticker to fix it.</p>
-      <div class="net" id="net" style="margin-top:12px"></div>
-      <div class="palette" id="net-palette" style="margin-top:14px"></div>
-      <div class="row center" style="margin-top:16px">
-        <button class="btn ghost" id="net-redo" data-t="net.redo">Use the camera again</button>
-        <button class="btn go" id="net-solve" data-t="net.start">Start the lesson ▶</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ coach ============ -->
-  <section class="screen" id="screen-coach" hidden>
-    <div class="mat coach-panel" id="coach-panel">
-      <p class="move-progress" id="coach-progress" aria-live="polite"></p>
-      <div class="move-track" id="coach-move-track" role="group" aria-label="Steps"></div>
-      <p class="move-goal" id="coach-goal" aria-live="polite"></p>
-      <div class="cube-stage" id="coach-cube" aria-label="Your cube. Drag to spin it."></div>
-      <p class="sr-only" id="coach-word" aria-live="polite"></p>
-      <p class="move-goal" id="done-count" hidden></p>
-      <button class="panel-resize" id="coach-resize" type="button" aria-label="Resize cube panel">
-        <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M8 22 22 8 M14 22 22 14 M20 22 22 20"/></svg>
-      </button>
-    </div>
-
-    <div class="row center coach-controls" id="coach-controls">
-      <button class="btn ghost" id="coach-back" data-t="coach.undo" aria-keyshortcuts="ArrowLeft">Previous step</button>
-      <button class="btn" id="coach-next" data-t="coach.next" aria-keyshortcuts="ArrowRight">Next step</button>
-      <button class="btn" id="done-again" data-t="coach.done.button" hidden>Solve another one</button>
-    </div>
-  </section>
-
-  <footer class="small muted page-links home-navigation">
-    <a class="home-button" href="index.html" id="go-home" hidden>
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v11h14V9M9 20v-7h6v7"/></svg>
-      <span data-t="start.home">Back to start</span>
-    </a>
+  <footer class="small muted page-links">
     <a href="/linktree/" id="back-links" style="color:inherit" data-t="steps.back.links">← back to the links</a>
   </footer>
 </div>
 
 <script src="lang.js?v=20261124d"></script>
 <script src="solver.js?v=20261124a"></script>
-<script src="progress.js?v=20261123b"></script>
 <script src="cubeview.js?v=20261124c"></script>
-<script src="capture.js?v=20261121d"></script>
-<script src="validation.js?v=20261124a"></script>
-<script src="app.js?v=20261124d"></script>
+<script src="start.js?v=20261124a"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 /**
  * Cube Coach — read a child's cube through the camera, then hand out one turn
- * at a time in plain words.
+ * at a time in plain words. This is solve.html; the chooser that leads here is
+ * index.html, and the step guide is steps.html.
  *
  * Three pieces: a camera capture flow that confirms each face before moving on,
  * an optional flat sticker editor for entering colours without the camera,
@@ -12,7 +13,10 @@
   var P = window.CubeProgress;
   var CHECK = window.CubeValidation;
   // Generate once; the resulting progress URL restores this cube on reload.
-  var autofillRandom = new URLSearchParams(window.location.search).get('autofill') === 'random';
+  var query = new URLSearchParams(window.location.search);
+  var autofillRandom = query.get('autofill') === 'random';
+  // The chooser links here with ?fresh=1 when the child asked to start over.
+  var startFresh = query.get('fresh') === '1';
 
   var COLORS = ['white', 'yellow', 'green', 'blue', 'red', 'orange'];
   var HEX = {
@@ -25,49 +29,20 @@
   var LANG = window.CubeLang;
   var t = LANG.t;
   var $ = function (id) { return document.getElementById(id); };
-  var currentScreen = 'start', restoringProgress = false, pendingProgress = null;
+  var currentScreen = 'capture', restoringProgress = false, pendingProgress = null;
   var progressURL = '', shareTimer = 0, shareRequest = 0, shareStatus = 'copying';
-  var modePreviewsReady = false;
   function show(screen) {
-    if (screen === 'start') renderModePreviews();
     hideShare();
-    $('share-tools').hidden = screen === 'start';
-    $('go-home').hidden = screen === 'start';
-    $('back-links').hidden = screen !== 'start';
+    $('share-tools').hidden = false;
     currentScreen = screen;
     if (screen !== 'capture') { clearCaptureIssue(); closeReopen(false); }
-    document.body.classList.toggle('is-starting', screen === 'start');
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
     if (screen !== 'coach' && cubeView) cubeView.stopDemo();
-    ['start', 'capture', 'check', 'coach'].forEach(function (s) {
+    ['capture', 'check', 'coach'].forEach(function (s) {
       $('screen-' + s).hidden = s !== screen;
     });
     window.scrollTo(0, 0);
-  }
-
-  function renderModePreviews() {
-    if (modePreviewsReady) return;
-    modePreviewsReady = true;
-    // A static illustration uses the same cube renderer as the lesson. It
-    // neither creates a lesson nor reads or changes the child's saved cube.
-    $('guided-preview').appendChild(window.CubeView.figure(L.applyMoves(L.solvedState(), L.parse('R U F')), { size: 155, move: 'R' }));
-    ['cross', 'corners', 'belt', 'yellowCross', 'yellowFace', 'cornerPlace', 'lastEdges'].forEach(function (stage, n) {
-      var step = document.createElement('span');
-      step.className = 'mode-sheet-step';
-      var face = document.createElement('span');
-      face.className = 'mode-mini-face';
-      for (var i = 0; i < 9; i++) {
-        var cell = document.createElement('i');
-        if ([1, 3, 4, 5, 7].indexOf(i) >= 0 || n > 3) cell.className = 'is-coloured';
-        face.appendChild(cell);
-      }
-      var label = document.createElement('small');
-      label.setAttribute('data-t', 'stage.' + stage + '.short');
-      label.textContent = t('stage.' + stage + '.short');
-      step.appendChild(face); step.appendChild(label);
-      $('instructions-preview').appendChild(step);
-    });
   }
 
   /* ================= sticker grids ================= */
@@ -412,19 +387,20 @@
       if (shared) { restoreProgress(shared); return true; }
       var params = new URLSearchParams(hash.slice(1));
       if (params.has('p') || params.has('v') || params.has('cube')) {
-        // Do not replace a saved lesson with a malformed or incomplete link.
+        // Say so, but do not replace a saved lesson with a malformed link.
         $('progress-error').hidden = false;
-        return true;
       }
     }
+    // No link to open: carry on with the lesson this device saved last, which
+    // is how closing the page and coming back lands on the same turn.
+    var local = null;
+    try { local = localStorage.getItem(P.STORE); }
+    catch (e) { /* a private window simply has nothing to carry on from */ }
+    var saved = local && P.decode(local);
+    if (saved) { restoreProgress(saved); return true; }
     return false;
   }
 
-  function startGuided() {
-    $('progress-error').hidden = true;
-    session = null;
-    startCapture(true);
-  }
   function facesLeft() {
     var left = 0;
     for (var f = 0; f < 6; f++) {
@@ -1089,7 +1065,6 @@
   $('history-confirm').onclick = function (e) {
     if (!e || e.target === $('history-confirm')) closeReopen(true);
   };
-  $('go-camera').onclick = startGuided;
   $('net-redo').onclick = function () { startCapture(false); };
   $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
   $('cap-solve').onclick = trySolve;
@@ -1103,9 +1078,9 @@
   $('done-again').onclick = function () {
     if (cubeView.busy()) return;
     stopCamera();
-    show('start');
-    try { window.history.replaceState(null, '', window.location.pathname + window.location.search); }
-    catch (e) { /* the mode picker still works if History is unavailable */ }
+    // Hide the lesson so nothing answers while the chooser loads.
+    $('screen-coach').hidden = true;
+    window.location.href = 'index.html';
   };
   $('cap-open-cam').onclick = toggleCamera;
   $('cam-close').onclick = stopCamera;
@@ -1160,9 +1135,9 @@
     if (cubeView && cubeView.busy()) pendingProgress = progress;
     else restoreProgress(progress);
   });
-  show('start');
-  // Only an explicit shared link or practice request bypasses the mode picker.
-  // Choosing guided solving starts fresh; an active lesson's URL restores it.
+  // A practice cube wins, then a link to a lesson; "start over" from the chooser
+  // empties the cube, and a plain visit picks up the cube left here last time.
   if (autofillRandom) startCapture(false, null, true);
-  else restoreSharedProgress();
+  else if (startFresh) startCapture(true);
+  else if (!restoreSharedProgress()) startCapture(false);
 })();

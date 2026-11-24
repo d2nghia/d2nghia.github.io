@@ -3,7 +3,7 @@
  *
  *   node cube/samples/generate.js
  *
- * Every sample is a plain redirect to ../index.html with a version 1 progress
+ * Every sample is a plain redirect to ../solve.html with a version 1 progress
  * hash (#v=1&cube=...&view=capture), so the cube arrives already coloured and
  * the only thing left to do is press "Solve it". The colours below are checked
  * against validation.js as they are written, so a sample cannot drift away from
@@ -134,7 +134,7 @@ function esc(text) {
 }
 
 function page(sample) {
-  const target = '../index.html#v=1&cube=' + cube(sample.names) + '&view=capture';
+  const target = '../solve.html#v=1&cube=' + cube(sample.names) + '&view=capture';
   return '<!doctype html>\n' +
 '<html lang="en">\n' +
 '<head>\n' +
@@ -186,7 +186,7 @@ function indexPage(rows) {
 '</head>\n' +
 '<body>\n' +
 '<h1>Sample cubes</h1>\n' +
-'<p>Each link opens the coach (<a href="../index.html">../index.html</a>) with the colours\n' +
+'<p>Each link opens the coach (<a href="../solve.html">../solve.html</a>) with the colours\n' +
 'already painted, so a scenario can be tried without colouring six faces again. Press\n' +
 '<strong>Solve it</strong> on the page that loads to see what the coach says about them.</p>\n' +
 '<p>Rebuild these files with <code>node cube/samples/generate.js</code>.</p>\n' +
