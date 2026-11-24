@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Cube Coach - sample cubes</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; padding: 0 1rem; }
+  h2 { margin: 2rem 0 .5rem; font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; color: #666; }
+  li { margin-bottom: .6rem; }
+  .note { color: #666; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Sample cubes</h1>
+<p>Each link opens the coach (<a href="../index.html">../index.html</a>) with the colours
+already painted, so a scenario can be tried without colouring six faces again. Press
+<strong>Solve it</strong> on the page that loads to see what the coach says about them.</p>
+<p>Rebuild these files with <code>node cube/samples/generate.js</code>.</p>
+<h2>missing</h2>
+<ul>
+  <li><a href="./missing-a-few-stickers.html">A few stickers left unpainted</a><br><span class="note">Four stickers have no colour. The page should point at them and ask for the rest.</span></li>
+  <li><a href="./missing-whole-face.html">A whole face left unpainted</a><br><span class="note">The back face is empty, as if the child stopped before turning the cube round.</span></li>
+</ul>
+<h2>centres</h2>
+<ul>
+  <li><a href="./two-centres-same-colour.html">Two centres painted the same colour</a><br><span class="note">The back centre repeats the top centre, so one colour is missing from the middles.</span></li>
+  <li><a href="./three-centres-same-colour.html">Three centres painted the same colour</a><br><span class="note">Two middles were overpainted, so two colours are missing and no single repaint fixes it.</span></li>
+</ul>
+<h2>count</h2>
+<ul>
+  <li><a href="./one-sticker-wrong-colour.html">One sticker the wrong colour</a><br><span class="note">Ten of one colour, eight of another: the classic mis-read. One repaint should fix it.</span></li>
+  <li><a href="./two-stickers-wrong-colour.html">Two stickers the wrong colour</a><br><span class="note">Two stickers read as the same wrong colour, so the page has pairs of repaints to offer.</span></li>
+  <li><a href="./four-stickers-wrong-colour.html">Four stickers the wrong colour</a><br><span class="note">Too far off to guess a repair: the page should show the counts and leave the fixing to the child.</span></li>
+</ul>
+<h2>twist</h2>
+<ul>
+  <li><a href="./twisted-corner.html">A corner twisted in place</a><br><span class="note">The three colours of one corner were entered rotated by one.</span></li>
+  <li><a href="./twisted-corner-other-way.html">A corner twisted the other way</a><br><span class="note">Another corner, rotated the opposite way, on a different part of the cube.</span></li>
+</ul>
+<h2>flip</h2>
+<ul>
+  <li><a href="./flipped-edge.html">An edge flipped in place</a><br><span class="note">The two colours of one edge were entered the wrong way round.</span></li>
+  <li><a href="./flipped-edge-elsewhere.html">An edge flipped, further round the cube</a><br><span class="note">The same mistake on an edge that is harder to spot.</span></li>
+</ul>
+<h2>parity</h2>
+<ul>
+  <li><a href="./two-edges-swapped.html">Two edges swapped</a><br><span class="note">Two whole edge pieces have traded places, which a real cube cannot do.</span></li>
+  <li><a href="./two-corners-swapped.html">Two corners swapped</a><br><span class="note">The same impossible trade, with corners instead of edges.</span></li>
+</ul>
+<h2>pieces</h2>
+<ul>
+  <li><a href="./impossible-corner.html">A corner with colours that cannot meet</a><br><span class="note">Two stickers traded places across pieces, leaving a corner no real cube has.</span></li>
+  <li><a href="./impossible-edge.html">An edge with colours that cannot meet</a><br><span class="note">The same kind of trade, this time producing an impossible edge.</span></li>
+  <li><a href="./duplicate-corner.html">Two corners that look like the same piece</a><br><span class="note">Both corners now carry the same three colours.</span></li>
+  <li><a href="./duplicate-edge.html">Two edges that look like the same piece</a><br><span class="note">Both edges now carry the same two colours.</span></li>
+</ul>
+<h2>corner-order</h2>
+<ul>
+  <li><a href="./mirrored-corner.html">A corner with its colours in mirrored order</a><br><span class="note">The right three colours on a corner, but read round the wrong way.</span></li>
+</ul>
+<h2>valid cube</h2>
+<ul>
+  <li><a href="./valid-scramble.html">A valid cube (control)</a><br><span class="note">The plain scramble every other sample is built from. It should solve, not complain.</span></li>
+</ul>
+</body>
+</html>

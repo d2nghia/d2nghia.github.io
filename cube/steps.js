@@ -14,8 +14,8 @@
   }
   var $ = function (id) { return document.getElementById(id); };
   var selected = {}, expanded = { cross: true }, cards = {}, active = 'cross';
-  var faces = ['D', 'U', 'F', 'R', 'B', 'L'], centres = {}, activeFace = 'D', swapMessage = '';
-  var centreCube = null, turningToFace = false;
+  var faces = ['D', 'U', 'F', 'R', 'B', 'L'], centres = {}, brush = 'white', statusMessage = '';
+  var centreCube = null;
   function node(tag, className, text) {
     var el = document.createElement(tag);
     if (className) el.className = className;
@@ -24,33 +24,46 @@
   }
   function diagram(markup, className) { var el = node('span', className); el.innerHTML = markup; return el; }
   function faceName(face) { return t('guide.face.' + face); }
-  function turnToFace(face, smooth) {
-    turningToFace = true;
-    centreCube.lookFace(face, smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    turningToFace = false;
+  function turnToFace(face) {
+    centreCube.lookFace(face, !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
-  function selectFace(face, smooth) {
-    activeFace = face; swapMessage = '';
-    turnToFace(face, smooth); buildCentrePicker();
+  /** Paint one centre with the colour the pencil is holding. */
+  function paintCentre(face) {
+    var result = G.assignCentre(centres, face, brush);
+    centres = result.centres;
+    statusMessage = result.swappedFace ? t('guide.centres.swap', { first: faceName(face).toLowerCase(), second: faceName(result.swappedFace).toLowerCase() }) : '';
+    colourScheme = G.schemeForCentres(centres);
+    buildCentrePicker(); build();
   }
   function syncCentreCube() {
     var L = window.CubeLib;
     var names = Array.from({ length: 54 }, function (_, i) { return i % 9 === 4 ? centres[L.FACE_ORDER[Math.floor(i / 9)]] || null : null; });
-    centreCube.setNames(names); centreCube.focus(activeFace);
-    $('guide-cube-face').textContent = faceName(activeFace);
+    centreCube.setNames(names);
     $('guide-centre-cube').setAttribute('aria-label', t('guide.centres.cube'));
-    $('guide-orbit-controls').setAttribute('aria-label', t('guide.centres.rotate'));
-    document.querySelectorAll('[data-orbit]').forEach(function (button) { button.setAttribute('aria-label', t('guide.centres.rotate.' + button.dataset.orbit)); });
     document.querySelectorAll('#guide-centre-cube [data-facelet]').forEach(function (sticker) {
       var index = Number(sticker.dataset.facelet), face = L.FACE_ORDER[Math.floor(index / 9)];
-      sticker.classList.toggle('guide-cube-centre', index % 9 === 4);
-      if (index % 9 !== 4) return;
-      sticker.dataset.faceLabel = LANG.side(face);
+      var centre = index % 9 === 4;
+      sticker.classList.toggle('guide-cube-centre', centre);
+      if (!centre) return;
       sticker.setAttribute('aria-label', faceName(face) + ': ' + (centres[face] ? LANG.colour(centres[face]) : t('guide.centres.empty')));
       sticker.classList.toggle('is-empty-centre', !centres[face]);
       var marker = sticker.querySelector('.guide-centre-question');
-      if (!marker) { marker = node('span', 'guide-centre-question', '?'); marker.setAttribute('aria-hidden', 'true'); sticker.appendChild(marker); }
+      if (!marker) {
+        marker = node('span', 'guide-centre-question', '?');
+        marker.setAttribute('aria-hidden', 'true'); sticker.appendChild(marker);
+      }
       marker.hidden = !!centres[face];
+      if (sticker.dataset.centreReady) return;
+      // Keyboard path: the six centres are buttons in their own right, and the
+      // cube turns to whichever one is focused so the child can see it.
+      sticker.dataset.centreReady = '1';
+      sticker.tabIndex = 0;
+      sticker.setAttribute('role', 'button');
+      sticker.addEventListener('focus', function () { turnToFace(face); });
+      sticker.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault(); paintCentre(face);
+      });
     });
   }
   function rotatePicker(direction) {
@@ -60,15 +73,15 @@
     centreCube.look(rx, ry, !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
   function initCentreCube() {
-    centreCube = window.CubeView.create($('guide-centre-cube'), null, { tapToSelect: true });
-    turnToFace(activeFace, false);
-    centreCube.onSticker(function (index) { selectFace(window.CubeLib.FACE_ORDER[Math.floor(index / 9)], true); });
-    centreCube.onView(function (rx, ry, face) {
-      if (turningToFace || face === activeFace) return;
-      activeFace = face; swapMessage = ''; buildCentrePicker();
-    });
-    document.querySelectorAll('[data-orbit]').forEach(function (button) {
-      button.onclick = function () { rotatePicker(button.dataset.orbit); };
+    centreCube = window.CubeView.create($('guide-centre-cube'), null, { glass: true, singlePaint: true });
+    centreCube.onSticker(function (index) {
+      // Only the middle square of a side carries a centre colour.
+      if (index % 9 !== 4) {
+        var nudge = t('guide.centres.middle');
+        if (statusMessage !== nudge) { statusMessage = nudge; buildCentrePicker(); }
+        return;
+      }
+      paintCentre(window.CubeLib.FACE_ORDER[Math.floor(index / 9)]);
     });
     $('guide-centre-cube').addEventListener('keydown', function (event) {
       var direction = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[event.key];
@@ -76,51 +89,31 @@
       event.preventDefault(); rotatePicker(direction);
     });
   }
+  function setBrush(colour) {
+    brush = colour;
+    $('guide-centre-cube').style.cursor = window.CubeView.pencilCursor(colour);
+    document.querySelectorAll('[data-centre-colour]').forEach(function (button) {
+      var on = button.dataset.centreColour === colour;
+      button.setAttribute('aria-pressed', String(on));
+      button.textContent = on ? '✓' : '';
+    });
+  }
   function buildCentrePicker() {
-    var host = $('guide-centre-cards'), palette = $('guide-centre-palette');
-    host.innerHTML = ''; palette.innerHTML = '';
-    host.setAttribute('aria-label', t('guide.centres.title'));
+    var palette = $('guide-centre-palette');
+    palette.innerHTML = '';
     var count = faces.filter(function (face) { return !!centres[face]; }).length;
     $('guide-face-count').textContent = t('guide.centres.count', { n: count });
-    $('guide-face-status').textContent = swapMessage;
-    faces.forEach(function (face) {
-      var colour = centres[face], button = node('button', 'guide-centre-card');
-      button.type = 'button'; button.dataset.face = face;
-      button.setAttribute('aria-pressed', String(face === activeFace));
-      button.setAttribute('aria-label', faceName(face) + ': ' + (colour ? LANG.colour(colour) : t('guide.centres.empty')));
-      var swatch = node('span', 'guide-face-swatch', colour ? '' : '?'); swatch.setAttribute('aria-hidden', 'true');
-      swatch.style.background = colour ? G.HEX[colour] : 'transparent'; button.appendChild(swatch);
-      button.appendChild(node('strong', '', faceName(face)));
-      button.appendChild(node('span', 'guide-centre-value', colour ? LANG.colour(colour) : t('guide.centres.empty')));
-      button.onclick = function () {
-        selectFace(face, true);
-        host.querySelector('[data-face="' + face + '"]').focus({ preventScroll: true });
-      };
-      host.appendChild(button);
-    });
-    $('guide-face-prompt').textContent = t('guide.centres.prompt', { face: faceName(activeFace).toLowerCase() });
+    $('guide-face-status').textContent = statusMessage;
+    $('guide-face-prompt').textContent = t('guide.centres.prompt');
     G.NAMES.forEach(function (colour) {
-      var button = node('button', 'guide-centre-colour'); button.type = 'button'; button.dataset.centreColour = colour;
-      button.setAttribute('aria-pressed', String(centres[activeFace] === colour));
-      var swatch = node('span', 'guide-swatch'); swatch.style.setProperty('--swatch', G.HEX[colour]); swatch.setAttribute('aria-hidden', 'true');
-      swatch.appendChild(node('span', '', '✓')); button.appendChild(swatch);
-      button.appendChild(node('span', '', LANG.colour(colour)));
-      var owner = faces.find(function (face) { return centres[face] === colour; });
-      button.appendChild(node('small', 'guide-colour-owner', owner ? faceName(owner) : '\u00a0'));
-      button.onclick = function () {
-        var face = activeFace, wasEmpty = !centres[face], result = G.assignCentre(centres, face, colour);
-        centres = result.centres;
-        swapMessage = result.swappedFace ? t('guide.centres.swap', { first: faceName(face).toLowerCase(), second: faceName(result.swappedFace).toLowerCase() }) : '';
-        colourScheme = G.schemeForCentres(centres);
-        if (wasEmpty) activeFace = faces.find(function (key) { return !centres[key]; }) || face;
-        turnToFace(activeFace, true);
-        buildCentrePicker(); build();
-        // Rebuilding updates colour-owner hints; keep keyboard focus on the
-        // colour that was just selected as the next face becomes active.
-        palette.querySelector('[data-centre-colour="' + colour + '"]').focus({ preventScroll: true });
-      };
+      var button = node('button', 'sw-' + colour), owner = faces.find(function (face) { return centres[face] === colour; });
+      button.type = 'button'; button.dataset.centreColour = colour;
+      button.setAttribute('aria-label', LANG.colour(colour) + (owner ? ' · ' + faceName(owner) : ''));
+      button.title = LANG.colour(colour);
+      button.onclick = function () { setBrush(colour); };
       palette.appendChild(button);
     });
+    setBrush(brush);
     $('guide-centre-reset').hidden = count === 0;
     syncCentreCube();
   }
@@ -206,12 +199,12 @@
   }
   $('guide-start').onclick = function () { showStage(active); };
   $('guide-centre-reset').onclick = function () {
-    centres = {}; activeFace = 'D'; colourScheme = null; swapMessage = '';
+    centres = {}; colourScheme = null; statusMessage = '';
     selected = {}; expanded = { cross: true }; active = 'cross';
-    turnToFace(activeFace, true);
+    centreCube.look(-22, -32, !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     buildCentrePicker(); build();
   };
   LANG.apply(document); initCentreCube(); buildCentrePicker(); build();
   $('lang-switch').onclick = function () { LANG.toggle(); };
-  LANG.onChange(function () { swapMessage = ''; buildCentrePicker(); build(); });
+  LANG.onChange(function () { statusMessage = ''; buildCentrePicker(); build(); });
 })();

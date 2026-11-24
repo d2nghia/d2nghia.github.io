@@ -95,6 +95,10 @@
     // The whole mat accepts drags; the smaller stage still controls cube sizing.
     var surface = host.closest('.cap-model, .mat') || host;
     var built = build(host), state = L.solvedState(), busy = false;
+    // Glass: every pane the child has not coloured yet stays see-through, so the
+    // colours on the far side show through and no face can hide its "?".
+    var glass = !!options.glass;
+    built.cube.classList.toggle('is-glass', glass);
     // One glow plane per side lets the focus fade between faces as we spin.
     // These follow the cube in 3D and never intercept sticker painting or dragging.
     var lights = {};
@@ -202,9 +206,9 @@
         Object.keys(c.faces).forEach(function (f) {
           var idx = FACELET_AT[c.pos.join(',') + '|' + f];
           var el = c.faces[f];
-          if (idx == null) { el.style.background = DEAD; el.style.boxShadow = 'none'; return; }
+          if (idx == null) { el.style.background = glass ? 'transparent' : DEAD; el.style.boxShadow = 'none'; return; }
           var n = repair && repair.preview && repair.after ? repair.after[idx] : names[idx];
-          el.style.background = n ? HEX[n] : UNSEEN;
+          el.style.background = n ? HEX[n] : (glass ? 'transparent' : UNSEEN);
           el.style.boxShadow = n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
           el.classList.toggle('is-focused', f === focusFace);
           el.classList.toggle('validation-target', !!repair && repair.indices.indexOf(idx) >= 0);
@@ -215,7 +219,7 @@
     function fit() {
       var w = host.clientWidth || 300;
       if (host.id === 'guide-centre-cube') {
-        built.cube.style.scale = Math.max(0.25, Math.min(w, host.clientHeight || 250) / 260);
+        built.cube.style.scale = Math.max(0.25, Math.min(w, host.clientHeight || 250) / 200);
         return;
       }
       if (host.id === 'coach-cube') w = Math.min(w, host.clientHeight || 300);
@@ -502,7 +506,9 @@
       if (e.target.closest('.cam-dock')) return;
       var mouse = e.pointerType === 'mouse';
       if (mouse && e.button === 0 && onSticker && !options.tapToSelect && faceletUnder(e) != null) {
-        painting = true;
+        // singlePaint: one square per click. Used where a square holds a choice
+        // rather than a colour to be spread over a side.
+        painting = !options.singlePaint;
         paintAt(e);
         try { surface.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
         e.preventDefault();
@@ -690,5 +696,24 @@
     return wrap;
   }
 
-  window.CubeView = { create: create, figure: figure, HEX: HEX, STANDARD: STANDARD, geoOf: geoOf };
+  /**
+   * A pencil cursor in the colour being painted, so a child can see what they
+   * are about to put down before they put it down.
+   */
+  function pencilCursor(colour) {
+    var tip = 'M3.5,28.5 11.6,25.9 6.1,20.4 Z';
+    var body = 'M11.6,25.9 6.1,20.4 18.4,8.1 23.9,13.6 Z';
+    var cap = 'M18.4,8.1 23.9,13.6 27.5,10 22,4.5 Z';
+    var shapes = '<path d="' + tip + '"/><path d="' + body + '"/><path d="' + cap + '"/>';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
+      '<g fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">' + shapes + '</g>' +
+      '<g stroke="#1b2130" stroke-width="1.5" stroke-linejoin="round">' +
+      '<path d="' + tip + '" fill="#f6e3c0"/>' +
+      '<path d="' + body + '" fill="' + HEX[colour] + '"/>' +
+      '<path d="' + cap + '" fill="#8d94a6"/>' +
+      '</g></svg>';
+    return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '") 3 29, crosshair';
+  }
+
+  window.CubeView = { create: create, figure: figure, HEX: HEX, STANDARD: STANDARD, geoOf: geoOf, pencilCursor: pencilCursor };
 })();

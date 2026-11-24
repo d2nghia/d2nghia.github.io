@@ -92,7 +92,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
   };
   const window = {
     CubeLib: { ...L }, CubeCapture: K,
-    location: { origin: 'https://example.test', pathname: '/cube/index.html', search: search ?? (persistence ? '' : '?autofill=random'), hash },
+    location: { origin: 'https://example.test', pathname: '/cube/index.html', search: search ?? (persistence && !autoSolve ? '' : '?autofill=random'), hash },
     innerHeight: 900, scrollTo() {},
     addEventListener(name, fn) { (windowListeners[name] ||= []).push(fn); },
     matchMedia: () => ({ matches: reducedMotion }),
@@ -154,10 +154,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
       return solution;
     };
     run('app.js');
-    if (autoSolve && get('screen-coach').hidden) {
-      if (!get('screen-capture').hidden) get('cap-solve').onclick();
-      else get('go-demo').onclick();
-    }
+    if (autoSolve && get('screen-coach').hidden) get('cap-solve').onclick();
   }
   async function settle(ms = 2000) {
     tick(ms);
@@ -922,8 +919,9 @@ test('painting and clearing capture colours update both the URL and local storag
 });
 
 test('manual colour edits are shared and restored in the manual editor', () => {
-  const f = fixture({ app: true, persistence: true, autoSolve: false });
-  f.get('go-manual').onclick();
+  const centres = Array(54).fill(null);
+  ['white', 'red', 'green', 'yellow', 'orange', 'blue'].forEach((colour, face) => { centres[face * 9 + 4] = colour; });
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'check', names: centres }) });
   f.get('net-palette').children.find(button => button.title === 'orange').onclick();
   f.get('net').children[0].children[1].children[0].onclick();
   const saved = P.decode(f.window.location.hash);
@@ -956,9 +954,9 @@ test('valid progress links still work with blocked storage, and local saving sur
   f.get('coach-move-track').children[1].onclick({ detail: 0 });
   const restored = fixture({ app: true, persistence: true, storageBlocked: true, hash: f.window.location.hash, autoSolve: false });
   assert.deepEqual(restored.coach.get(), f.coach.get());
-  const noHistory = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['U2'] });
+  const noHistory = fixture({ app: true, persistence: true, autoSolve: false, scramble: ['U2'], search: '?autofill=random' });
   noHistory.window.history.replaceState = () => { throw new Error('History blocked'); };
-  noHistory.get('go-demo').onclick();
+  noHistory.get('cap-solve').onclick();
   assert.equal(P.decode(noHistory.storage.get(P.STORE)).view, 'coach');
 });
 
@@ -1126,10 +1124,10 @@ test('sharing works for entered colours and Done, and is hidden before a cube is
   assert.equal(f.get('share-tools').hidden, true);
   await f.get('share-progress').onclick();
   assert.equal(copied.length, 0);
-  f.get('go-manual').onclick();
+  f.get('go-camera').onclick();
   assert.equal(f.get('share-tools').hidden, false);
   await f.get('share-progress').onclick();
-  assert.equal(P.decode(new URL(copied.at(-1)).hash).view, 'check');
+  assert.equal(P.decode(new URL(copied.at(-1)).hash).view, 'capture');
   f.get('net-redo').onclick();
   assert.equal(f.get('share-popover').hidden, true);
   f.paint(0, 'red');
@@ -1353,7 +1351,7 @@ test('other suggestions can be compared, painting dismisses stale diagnoses, and
   f.get('cap-issue-apply').onclick();
   assert.equal(f.window.location.hash, editedHash, 'A dismissed correction cannot be applied');
   f.get('cap-solve').onclick();
-  f.get('go-manual').onclick();
+  f.get('cap-clear').onclick();
   assert.equal(f.get('cap-issue').hidden, true);
   assert.equal(f.tasks.size, 0);
 });
@@ -1460,4 +1458,40 @@ test('the selected face follows actual cube orientation and every named face can
     assert.ok(Number.isFinite(angle.rx) && Number.isFinite(angle.ry));
     assert.equal(K.frameFromView(angle.rx, angle.ry).front, face);
   }
+});
+
+test('every Solve press keeps the cube on the tried shelf, newest first, never twice and at most six', () => {
+  const storage = new Map();
+  const f = fixture({ app: true, persistence: true, autoSolve: false, storage });
+  f.get('go-camera').onclick();
+  assert.equal(f.get('cube-history').hidden, true);
+  f.get('cap-solve').onclick();
+  assert.equal(f.get('cube-history').hidden, true, 'An untouched cube is not a cube anyone tried');
+  f.paint(0, 'red');
+  f.get('cap-solve').onclick();
+  assert.equal(f.get('cube-history').hidden, false, 'An unfinished cube is kept too');
+  assert.equal(f.get('history-list').children.length, 1);
+  f.get('cap-solve').onclick();
+  assert.equal(f.get('history-list').children.length, 1, 'The same cube is never kept twice');
+  for (const colour of ['green', 'blue', 'yellow', 'orange', 'white', 'red']) {
+    f.paint(1, colour);
+    f.get('cap-solve').onclick();
+  }
+  assert.equal(f.get('history-list').children.length, 6, 'The shelf holds six cubes at most');
+  const reloaded = fixture({ app: true, persistence: true, autoSolve: false, storage });
+  assert.equal(reloaded.get('history-list').children.length, 6, 'The shelf survives a reload');
+  const before = f.window.location.hash;
+  f.get('history-list').children[5].onclick();
+  assert.equal(f.get('history-confirm').hidden, false, 'A shelf cube asks before it replaces the one in hand');
+  assert.equal(f.get('history-confirm-cube').children.length, 1, 'The question shows the cube it is about to open');
+  f.get('history-confirm-no').onclick();
+  assert.equal(f.get('history-confirm').hidden, true);
+  assert.equal(f.window.location.hash, before, 'Saying no leaves the colours alone');
+  f.get('history-list').children[5].onclick();
+  f.get('history-confirm-yes').onclick();
+  assert.equal(f.get('history-confirm').hidden, true);
+  const picked = P.decode(f.window.location.hash);
+  assert.equal(picked.view, 'capture');
+  assert.equal(picked.names[0], 'red');
+  assert.equal(picked.names[1], 'green', 'The cube comes back exactly as it was pressed');
 });

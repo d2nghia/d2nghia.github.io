@@ -35,7 +35,7 @@
     $('go-home').hidden = screen === 'start';
     $('back-links').hidden = screen !== 'start';
     currentScreen = screen;
-    if (screen !== 'capture') clearCaptureIssue();
+    if (screen !== 'capture') { clearCaptureIssue(); closeReopen(false); }
     document.body.classList.toggle('is-starting', screen === 'start');
     document.body.classList.toggle('is-coaching', screen === 'coach');
     document.body.classList.toggle('is-capturing', screen === 'capture');
@@ -129,27 +129,8 @@
   var captureIssue = null, repairIndex = 0;
   var cam = { stream: null, timer: 0, live: false, cells: new Array(9).fill(null), place: null, palette: null, waiting: 0, permission: null, canvas: null, found: null, view: null, history: [], gone: 0, on: false, mirror: false, handFixed: {}, candidate: { key: '', cells: null, streak: 0 } };
 
-  /**
-   * A pencil cursor in the colour being painted, so a child can see what they
-   * are about to put down before they put it down.
-   */
-  function pencilCursor(colour) {
-    var tip = 'M3.5,28.5 11.6,25.9 6.1,20.4 Z';
-    var body = 'M11.6,25.9 6.1,20.4 18.4,8.1 23.9,13.6 Z';
-    var cap = 'M18.4,8.1 23.9,13.6 27.5,10 22,4.5 Z';
-    var shapes = '<path d="' + tip + '"/><path d="' + body + '"/><path d="' + cap + '"/>';
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
-      '<g fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round">' + shapes + '</g>' +
-      '<g stroke="#1b2130" stroke-width="1.5" stroke-linejoin="round">' +
-      '<path d="' + tip + '" fill="#f6e3c0"/>' +
-      '<path d="' + body + '" fill="' + HEX[colour] + '"/>' +
-      '<path d="' + cap + '" fill="#8d94a6"/>' +
-      '</g></svg>';
-    return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '") 3 29, crosshair';
-  }
   function setBrush(colour) {
-    var pencil = pencilCursor(colour);
-    $('cap-cube').style.cursor = pencil;
+    $('cap-cube').style.cursor = window.CubeView.pencilCursor(colour);
   }
 
   function paintModel() {
@@ -251,6 +232,91 @@
   }
   function forgetCube() {
     try { localStorage.removeItem(STORE); } catch (e) { /* nothing to do */ }
+  }
+
+  /* ================= cubes already tried =================
+   * Every press of Solve keeps the cube as it was entered, finished or not, so
+   * a child can step back to a cube they were working on instead of colouring
+   * it in again. Newest first, the same cube never twice.
+   */
+  var TRIED_STORE = 'cube-coach/tried', TRIED_MAX = 6;
+  var tried = [];
+
+  function cubeKey(list) {
+    return list.map(function (c) { return c || '-'; }).join('|');
+  }
+  function loadTried() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(TRIED_STORE) || '[]');
+      if (!Array.isArray(saved)) return [];
+      return saved.filter(function (entry) {
+        return entry && Array.isArray(entry.names) && entry.names.length === 54;
+      }).map(function (entry) {
+        return { names: entry.names.map(function (c) { return COLORS.indexOf(c) >= 0 ? c : null; }) };
+      }).slice(0, TRIED_MAX);
+    } catch (e) { return []; }
+  }
+  function rememberTry() {
+    // An untouched cube is not a cube anyone tried.
+    if (!names.some(function (c) { return !!c; })) return;
+    var key = cubeKey(names);
+    tried = tried.filter(function (entry) { return cubeKey(entry.names) !== key; });
+    tried.unshift({ names: names.slice() });
+    tried = tried.slice(0, TRIED_MAX);
+    try { localStorage.setItem(TRIED_STORE, JSON.stringify(tried)); }
+    catch (e) { /* the list still works for this visit without storage */ }
+    renderTried();
+  }
+  /** A still picture: this cube cannot be spun or painted, only picked up again. */
+  function triedFigure(entry, size) {
+    var fig = window.CubeView.figure(entry.names.map(function (c) {
+      return Math.max(0, COLORS.indexOf(c));
+    }), {
+      size: size, faceColour: COLORS,
+      mask: function (idx) { return !!entry.names[idx]; }
+    });
+    fig.classList.add('cube-thumb');
+    return fig;
+  }
+  function renderTried() {
+    var list = $('history-list');
+    list.innerHTML = '';
+    $('cube-history').hidden = !tried.length;
+    tried.forEach(function (entry, i) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'history-item';
+      item.setAttribute('aria-label', t('history.item', { n: i + 1 }));
+      item.appendChild(triedFigure(entry, 92));
+      item.onclick = function () { askReopen(entry, item); };
+      list.appendChild(item);
+    });
+  }
+
+  /* Picking a cube off the shelf throws away whatever is on the big cube, so it
+   * asks first, with the chosen cube shown beside the question. */
+  var pendingTry = null;
+  function askReopen(entry, item) {
+    pendingTry = { entry: entry, item: item };
+    var preview = $('history-confirm-cube');
+    preview.innerHTML = '';
+    preview.appendChild(triedFigure(entry, 108));
+    $('history-confirm').hidden = false;
+    $('history-confirm-yes').focus({ preventScroll: true });
+  }
+  function closeReopen(toItem) {
+    if ($('history-confirm').hidden) return;
+    $('history-confirm').hidden = true;
+    var item = pendingTry && pendingTry.item;
+    pendingTry = null;
+    if (toItem && item && item.focus) item.focus({ preventScroll: true });
+  }
+  function reopenTried() {
+    if (!pendingTry) return;
+    var entry = pendingTry.entry;
+    closeReopen(false);
+    stopCamera();
+    startCapture(false, entry.names);
   }
 
   function saveProgress(cursor) {
@@ -671,6 +737,7 @@
   }
 
   function trySolve() {
+    rememberTry();
     var left = facesLeft();
     if (left > 0) {
       // The camera still sees the previous physical side while the model turns.
@@ -679,7 +746,7 @@
       $('cap-msg').hidden = false;
       $('cap-msg').className = 'small warn-line center';
       $('cap-msg').textContent = t('cap.missing');
-      $('cap-cube').scrollIntoView({
+      if ($('cap-cube').scrollIntoView) $('cap-cube').scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         block: 'center'
       });
@@ -692,14 +759,6 @@
   /* ================= net editor ================= */
   var NET_ORDER = ['U', 'L', 'F', 'R', 'B', 'D'];
   var netPalette, netGrids = {};
-
-  function startManual() {
-    L.FACE_ORDER.forEach(function (f) {
-      var base = L.FACE_ORDER.indexOf(f) * 9;
-      if (!names[base + 4]) names[base + 4] = DEFAULT_CENTRES[f];
-    });
-    renderNet(t('net.title'), t('net.hint'));
-  }
 
   function renderNet(title, hint) {
     $('check-title').textContent = title;
@@ -765,12 +824,6 @@
     startCoach();
   }
 
-  /** A scrambled cube to practise on, for anyone without one in their hands. */
-  function startDemo() {
-    stopCamera();
-    var state = L.applyMoves(L.solvedState(), L.randomScramble(30));
-    solveAndTeach(state, ['white', 'red', 'green', 'yellow', 'orange', 'blue']);
-  }
   /* ================= coach ================= */
   var cubeView = null, trackDrag = null, trackWasDragged = false;
 
@@ -1022,14 +1075,21 @@
   wirePanelResize();
   $('lang-switch').onclick = function () { LANG.toggle(); };
   LANG.onChange(function () {
+    renderTried();
     labelShare();
     labelResizeHandle();
     if (!$('screen-capture').hidden) setBrush(capPalette.get());
     if (captureIssue) renderCaptureIssue();
     if (!$('screen-coach').hidden && session) { startCoachChrome(); render(); }
   });
+  tried = loadTried();
+  renderTried();
+  $('history-confirm-yes').onclick = reopenTried;
+  $('history-confirm-no').onclick = function () { closeReopen(true); };
+  $('history-confirm').onclick = function (e) {
+    if (!e || e.target === $('history-confirm')) closeReopen(true);
+  };
   $('go-camera').onclick = startGuided;
-  $('go-manual').onclick = function () { startManual(); };
   $('net-redo').onclick = function () { startCapture(false); };
   $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
   $('cap-solve').onclick = trySolve;
@@ -1037,7 +1097,6 @@
   $('cap-issue-prev').onclick = function () { if (captureIssue && repairIndex > 0) { repairIndex--; renderCaptureIssue(); } };
   $('cap-issue-next').onclick = function () { if (captureIssue && repairIndex < captureIssue.suggestions.length - 1) { repairIndex++; renderCaptureIssue(); } };
   $('cap-issue-apply').onclick = applyRepair;
-  $('go-demo').onclick = startDemo;
   $('net-solve').onclick = assemble;
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };
@@ -1055,6 +1114,11 @@
     if (!$('share-popover').hidden && !($('share-tools').contains(e.target))) hideShare();
   });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('history-confirm').hidden) {
+      closeReopen(true);
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape' && !$('share-popover').hidden) {
       hideShare();
       $('share-progress').focus({ preventScroll: true });
