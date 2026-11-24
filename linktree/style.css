@@ -294,3 +294,10 @@ a:hover {
         height: 1px; /* Blink (narrow eye) */
     }
 }
+/* Separate the tools (Cube Coach) from the profile links */
+.links-divider {
+    border: 0;
+    border-top: 1px solid rgba(27, 33, 48, 0.2);
+    margin: 18px auto;
+    width: 60%;
+}
