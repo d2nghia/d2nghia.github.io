@@ -417,15 +417,18 @@
      * either case, so the arrow says what the hint says without words. It is
      * redrawn at every angle: the square it points at may come into view, and
      * the one on the far side goes out of it. */
-    var ARROW_CLEAR = 26;
+    /* The arrow lies along the way to the square, head outwards: it starts on
+     * the face the child is looking at, bends over the edge and points past
+     * it, at the side the square is on. */
+    var ARROW_SIZE = 52, ARROW_CLEAR = 6;
     function arrowTowards(angle, radius) {
       var span = document.createElement('span');
       span.className = 'repair-arrow';
       span.style.transform = 'translate(-50%, -50%) rotate(' + Math.round(angle) +
         'deg) translateX(' + Math.round(radius) + 'px)';
       span.innerHTML = '<svg viewBox="0 0 48 48" focusable="false">' +
-        '<path class="repair-arrow-bend" d="M7 41 C 7 19, 20 11, 35 13" />' +
-        '<path class="repair-arrow-tip" d="M30 4 L45 14 L29 22 Z" /></svg>';
+        '<path class="repair-arrow-bend" d="M4 10 C 18 10, 24 24, 36 24" />' +
+        '<path class="repair-arrow-tip" d="M33 14 L47 24 L33 34 Z" /></svg>';
       return span;
     }
     /* Just outside the cube's outline and never off the mat. The outline is
@@ -443,8 +446,10 @@
         var near = DEPTH / Math.max(DEPTH - at.z * HALF * scale, 1);
         reach = Math.max(reach, (at.x * across + at.y * down) * HALF * scale * near);
       }
+      // The whole arrow has to stay on the mat, head included; against a cube
+      // that fills its mat it then lies over the edge rather than beyond it.
       var mat = host.getBoundingClientRect ? host.getBoundingClientRect() : null;
-      var room = (mat && mat.width ? Math.min(mat.width, mat.height) / 2 : 150) - ARROW_CLEAR;
+      var room = (mat && mat.width ? Math.min(mat.width, mat.height) / 2 : 150) - ARROW_SIZE / 2 - 4;
       return Math.max(70, Math.min(reach + ARROW_CLEAR, room));
     }
     function drawArrows() {

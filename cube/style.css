@@ -435,7 +435,7 @@ body.is-starting .wrap {
 .repair-arrows { position: absolute; inset: 0; pointer-events: none; }
 .repair-arrows.is-turning { opacity: 0; }
 .repair-arrow {
-  position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; color: #bafff0;
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; color: #bafff0;
   filter: drop-shadow(0 0 8px rgba(186, 255, 240, .9));
   animation: repair-arrow-beat 1.7s ease-in-out infinite;
 }
