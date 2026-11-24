@@ -1565,3 +1565,46 @@ test('stepping to another suggestion turns both cubes over, and dragging keeps t
   assert.equal((f.cubeIn(f.get('cap-issue-cube')).played || []).length, played, 'a drag is followed at once, not played');
   assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(cube));
 });
+
+test('both cubes turn to an angle that shows every sticker in question', () => {
+  // How far a side leans towards the viewer: below 0.3 it is too edge-on to
+  // read a colour off. Opposite sides can never both be seen, so the most a
+  // view can show is one side per axis.
+  const depth = (face, [rx, ry]) => {
+    const n = L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos;
+    const x = rx * Math.PI / 180, y = ry * Math.PI / 180;
+    return -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
+  };
+  for (const pieces of [L.CORNERS, L.EDGES]) {
+    const names = repairCube(pieces);
+    const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+    f.get('cap-solve').onclick();
+    const allShown = (id, sides) => {
+      const angle = f.facing(f.get(id));
+      const axes = new Set(sides.map(face => L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos.findIndex(v => v)));
+      const shown = sides.filter(face => depth(face, angle) >= 0.3);
+      assert.equal(shown.length, axes.size,
+        'every side that can be seen at once is: ' + id + ' at ' + angle + ' shows ' + shown + ' of ' + sides);
+    };
+    for (let step = 0; step < 8; step++) {
+      const lit = f.stickersIn(f.get('cap-cube')).filter(el => el.classList.contains('validation-target'));
+      assert.ok(lit.length, 'a suggestion always marks the stickers it means');
+      const sides = [...new Set(lit.map(el => L.FACELETS[el.dataset.facelet].face))];
+      for (const id of ['cap-cube', 'cap-issue-cube']) allShown(id, sides);
+      f.get('cap-issue-next').onclick();
+    }
+    // Two pieces far apart are the hard case: aiming at the first sticker
+    // alone used to leave the rest of them round the back.
+    const facelet = (face, row, col) => L.FACE_INDEX[face] * 9 + row * 3 + col;
+    const spreads = [
+      [facelet('F', 1, 1), facelet('R', 1, 1)],
+      [facelet('U', 2, 2), facelet('F', 0, 2), facelet('R', 0, 0)],
+      [facelet('F', 1, 0), facelet('L', 1, 2), facelet('U', 1, 1)],
+      [facelet('F', 0, 1), facelet('U', 2, 1), facelet('B', 2, 1), facelet('D', 2, 1)]
+    ];
+    for (const indices of spreads) {
+      f.capture.showRepair({ indices, animate: true });
+      allShown('cap-cube', [...new Set(indices.map(i => L.FACELETS[i].face))]);
+    }
+  }
+});

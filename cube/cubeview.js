@@ -419,12 +419,10 @@
       repair = { indices: options.indices.slice(), pieces: options.pieces || [],
         point: !!options.point, onPhase: onPhase };
       built.cube.classList.add('repairing');
-      var p = L.FACELETS[repair.indices[0]].pos;
       function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
       var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var rx = p[1] ? (p[1] > 0 ? -42 : 42) : -16;
-      var ry = -Math.atan2(p[0], p[2]) * 180 / Math.PI;
-      if (!options.hold) look(near(rx, view.rx), near(ry, view.ry), !reduce);
+      var aim = aimAngles(repair.indices, view);
+      if (!options.hold) look(near(aim.rx, view.rx), near(aim.ry, view.ry), !reduce);
       repaint(null);
       host.dataset.validationPhase = 'focus';
       if (onPhase) onPhase('focus');
@@ -531,15 +529,62 @@
     };
   }
 
+  // How far a side's outward normal leans towards the viewer: 1 facing them.
+  function faceDepth(n, rx, ry) {
+    var x = rx * Math.PI / 180, y = ry * Math.PI / 180;
+    return -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
+  }
+
   // The face whose outward normal points most directly towards the viewer.
   function facingFace(rx, ry) {
-    var x = rx * Math.PI / 180, y = ry * Math.PI / 180;
     var best = null, score = -Infinity;
     L.FACE_ORDER.forEach(function (face, i) {
-      var n = L.FACELETS[i * 9 + 4].pos;
-      var z = -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
+      var z = faceDepth(L.FACELETS[i * 9 + 4].pos, rx, ry);
       if (z > score) { best = face; score = z; }
     });
+    return best;
+  }
+
+  // Always some tilt, so the cube keeps its corner-on look rather than
+  // flattening into a single square.
+  var AIM_TILTS = [-42, -34, -26, -16, 16, 26, 34, 42];
+  // Below this the side is too edge-on to read a colour off.
+  var AIM_SEEN = 0.3;
+
+  /**
+   * An angle showing as many of these stickers as a cube can show at once. The
+   * stickers of one piece sit on two or three sides, so aiming at the first of
+   * them can turn the rest out of sight, and a difference the child cannot see
+   * is one they cannot copy. Sides that face away are left out of the
+   * reckoning: where some must be hidden - opposite sides cannot both be seen
+   * - the ones on show are better turned towards the child than all of them
+   * left at a glancing angle.
+   */
+  function aimAngles(indices, at) {
+    var normals = [];
+    indices.forEach(function (idx) {
+      var n = L.FACELETS[L.FACE_INDEX[L.FACELETS[idx].face] * 9 + 4].pos;
+      if (normals.indexOf(n) < 0) normals.push(n);
+    });
+    var best = null;
+    for (var i = 0; i < AIM_TILTS.length; i++) {
+      for (var ry = -177; ry < 180; ry += 6) {
+        var rx = AIM_TILTS[i], seen = 0, worst = Infinity, total = 0, top = -Infinity;
+        for (var j = 0; j < normals.length; j++) {
+          var z = faceDepth(normals[j], rx, ry);
+          if (z > top) top = z;
+          if (z < AIM_SEEN) continue;
+          seen++; total += z;
+          if (z < worst) worst = z;
+        }
+        if (!seen) { worst = top; total = top; }
+        // Between views that show the stickers equally well, the nearer one
+        // wins, so the cube turns no further than it has to.
+        var away = Math.abs(rx - at.rx) + Math.abs(((ry - at.ry) % 360 + 540) % 360 - 180);
+        var score = seen * 10 + worst + 0.2 * (total / Math.max(seen, 1)) - away * 0.0005;
+        if (!best || score > best.score) best = { rx: rx, ry: ry, score: score };
+      }
+    }
     return best;
   }
 
