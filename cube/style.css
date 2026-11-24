@@ -427,8 +427,27 @@ body.is-starting .wrap {
 .panel-resize:focus-visible { outline: 2px solid #bafff0; outline-offset: 1px; }
 .coach-panel.is-resizing { cursor: nwse-resize; }
 .cube-stage {
+  position: relative;
   width: 100%; max-width: 300px; aspect-ratio: 1 / 1; max-height: 50vh;
   display: grid; place-items: center; perspective: 900px; touch-action: none; cursor: grab;
+}
+/* arrows round the edge, pointing at squares that are behind the cube */
+.repair-arrows { position: absolute; inset: 0; pointer-events: none; }
+.repair-arrows.is-turning { opacity: 0; }
+.repair-arrow {
+  position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; color: #bafff0;
+  filter: drop-shadow(0 0 8px rgba(186, 255, 240, .9));
+  animation: repair-arrow-beat 1.7s ease-in-out infinite;
+}
+.repair-arrow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.repair-arrow path { fill: none; stroke: currentColor; stroke-width: 6; stroke-linecap: round; }
+.repair-arrow .repair-arrow-tip { fill: currentColor; stroke: none; }
+@keyframes repair-arrow-beat {
+  0%, 100% { opacity: .75; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .repair-arrow { animation: none; }
 }
 .cap-model, .mat { touch-action: none; cursor: grab; }
 .cube { position: relative; width: 132px; height: 132px; transform-style: preserve-3d; pointer-events: none; }

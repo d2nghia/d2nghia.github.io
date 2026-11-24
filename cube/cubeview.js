@@ -57,7 +57,11 @@
       cubies.push({ el: el, faces: faces, pos: [x, y, z] });
     }
     cubies.forEach(function (c) { c.el.style.transform = base(c.pos); });
-    return { cube: cube, cubies: cubies };
+    var arrows = document.createElement('div');
+    arrows.className = 'repair-arrows';
+    arrows.setAttribute('aria-hidden', 'true');
+    host.appendChild(arrows);
+    return { cube: cube, cubies: cubies, arrows: arrows };
   }
 
   function paint(cubies, state, faceColour, opts) {
@@ -178,8 +182,13 @@
       view.rx = rx; view.ry = ry;
       applyView(smooth);
       if (!smooth || from === to || !built.cube.animate) return;
-      built.cube.animate([{ transform: from }, { transform: to }],
+      var turning = built.cube.animate([{ transform: from }, { transform: to }],
         { duration: TURN_MS, easing: TURN_EASE });
+      if (!built.arrows || !turning) return;
+      built.arrows.classList.add('is-turning');
+      turning.onfinish = turning.oncancel = function () {
+        built.arrows.classList.remove('is-turning');
+      };
     }
 
     function showMissing() {
@@ -204,6 +213,7 @@
 
     function applyView(smooth) {
       built.cube.style.transform = pose(view.rx, view.ry);
+      drawArrows();
       if (onView) onView(view.rx, view.ry, facingFace(view.rx, view.ry), !!smooth);
     }
     /** Draw whatever has been read so far; anything still unknown stays grey. */
@@ -398,8 +408,59 @@
       repair = null;
       built.cube.classList.remove('repairing');
       delete host.dataset.validationPhase;
-      clearHints(); repaint(null);
+      clearHints(); repaint(null); drawArrows();
       if (old.onPhase) old.onPhase('stopped');
+    }
+
+    /* A curved arrow at the edge a marked square lies behind. Reading comes
+     * later than seeing for a child, and spinning the cube is the answer in
+     * either case, so the arrow says what the hint says without words. It is
+     * redrawn at every angle: the square it points at may come into view, and
+     * the one on the far side goes out of it. */
+    var ARROW_CLEAR = 26;
+    function arrowTowards(angle, radius) {
+      var span = document.createElement('span');
+      span.className = 'repair-arrow';
+      span.style.transform = 'translate(-50%, -50%) rotate(' + Math.round(angle) +
+        'deg) translateX(' + Math.round(radius) + 'px)';
+      span.innerHTML = '<svg viewBox="0 0 48 48" focusable="false">' +
+        '<path class="repair-arrow-bend" d="M7 41 C 7 19, 20 11, 35 13" />' +
+        '<path class="repair-arrow-tip" d="M30 4 L45 14 L29 22 Z" /></svg>';
+      return span;
+    }
+    /* Just outside the cube's outline and never off the mat. The outline is
+     * the eight corners as they fall on the screen, since the cube is drawn at
+     * whatever size the mat allows and in perspective, and a box around the
+     * cube element alone says nothing about where its corners reach. */
+    var HALF = CUBE / 2, DEPTH = 900;
+    function arrowRadius(angle) {
+      var scale = Number(built.cube.style.scale) || 1;
+      var across = Math.cos(angle), down = Math.sin(angle), reach = 0;
+      for (var i = 0; i < 8; i++) {
+        var at = faceAt([i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1], view.rx, view.ry);
+        // faceAt works in the same cube space the cubies are placed in, where
+        // the screen is x right, y down and z towards the child.
+        var near = DEPTH / Math.max(DEPTH - at.z * HALF * scale, 1);
+        reach = Math.max(reach, (at.x * across + at.y * down) * HALF * scale * near);
+      }
+      var mat = host.getBoundingClientRect ? host.getBoundingClientRect() : null;
+      var room = (mat && mat.width ? Math.min(mat.width, mat.height) / 2 : 150) - ARROW_CLEAR;
+      return Math.max(70, Math.min(reach + ARROW_CLEAR, room));
+    }
+    function drawArrows() {
+      if (!built.arrows) return;
+      built.arrows.innerHTML = '';
+      if (!repair) return;
+      var drawn = {};
+      repair.indices.forEach(function (idx) {
+        var face = L.FACELETS[idx].face;
+        if (drawn[face]) return;
+        drawn[face] = true;
+        var at = faceAt(L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos, view.rx, view.ry);
+        if (at.z >= AIM_SEEN) return;
+        var angle = Math.atan2(at.y, at.x);
+        built.arrows.appendChild(arrowTowards(angle * 180 / Math.PI, arrowRadius(angle)));
+      });
     }
 
     /**
@@ -425,7 +486,7 @@
       var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       var aim = aimAngles(repair.indices, repair.pieces, view);
       if (!options.hold) look(near(aim.rx, view.rx), near(aim.ry, view.ry), !reduce);
-      repaint(null);
+      repaint(null); drawArrows();
       host.dataset.validationPhase = 'focus';
       if (onPhase) onPhase('focus');
       return aim;
@@ -532,11 +593,21 @@
     };
   }
 
-  // How far a side's outward normal leans towards the viewer: 1 facing them.
-  function faceDepth(n, rx, ry) {
+  /**
+   * Where a side's outward normal lands once the cube is turned: z is how far
+   * it leans towards the child (1 facing them), and x and y are which way it
+   * lies on the screen, x to the right and y downwards.
+   */
+  function faceAt(n, rx, ry) {
     var x = rx * Math.PI / 180, y = ry * Math.PI / 180;
-    return -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
+    var flat = -n[0] * Math.sin(y) + n[2] * Math.cos(y);
+    return {
+      x: n[0] * Math.cos(y) + n[2] * Math.sin(y),
+      y: -n[1] * Math.cos(x) - flat * Math.sin(x),
+      z: -n[1] * Math.sin(x) + flat * Math.cos(x)
+    };
   }
+  function faceDepth(n, rx, ry) { return faceAt(n, rx, ry).z; }
 
   // The face whose outward normal points most directly towards the viewer.
   function facingFace(rx, ry) {
