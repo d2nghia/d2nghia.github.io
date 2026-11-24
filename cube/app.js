@@ -117,14 +117,47 @@
 
   function clearCaptureIssue() {
     captureIssue = null;
+    renderSuggestionCube(null);
     if (capView) capView.stopRepair();
     $('cap-issue').hidden = true;
-    $('cap-issue-badge').hidden = true;
   }
 
-  function repairPhase(phase) {
-    var label = t('repair.phase.' + (phase === 'preview' ? 'preview' : phase === 'turn' ? 'turn' : 'original'));
-    $('cap-issue-badge').textContent = label;
+  /* The suggested colours get a cube of their own, the same size as the one
+   * being worked on and turned to the same angle, so a child can look from one
+   * to the other and to the cube in their hands without remembering anything.
+   * Either cube can be spun, and the other follows: comparing them only works
+   * while both are seen from the same side. Neither can be painted here. */
+  var suggestionView = null, mirroring = false;
+  /** The same angle, by the shortest way round, and turning if the other did. */
+  function mirrorAngles(view, rx, ry, smooth) {
+    if (!view || mirroring) return;
+    function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
+    var at = view.angles();
+    mirroring = true;
+    try { view.look(near(rx, at.rx), near(ry, at.ry), smooth); } finally { mirroring = false; }
+  }
+  function renderSuggestionCube(suggestion) {
+    if (!suggestion) { if (suggestionView) suggestionView.stopRepair(); return; }
+    var fresh = false;
+    if (!suggestionView) {
+      fresh = true;
+      suggestionView = window.CubeView.create($('cap-issue-cube'));
+      // Registering reports the angle it happens to start at. That is not a
+      // turn anyone asked for, and copying it would drag the cube above back
+      // to where it was before it aimed at the piece.
+      mirroring = true;
+      try {
+        suggestionView.onView(function (rx, ry, face, smooth) { mirrorAngles(capView, rx, ry, smooth); });
+      } finally { mirroring = false; }
+    }
+    suggestionView.setNames(suggestion.after.slice());
+    // It is aimed by the cube above it, in one turn, rather than aiming itself
+    // at the piece and then being turned again to match.
+    suggestionView.showRepair({ indices: suggestion.indices, pieces: suggestion.pieces, hold: true });
+    // Stepping to another suggestion turns both cubes over to the new piece
+    // rather than snapping: a jump leaves no idea of which way the cube moved.
+    var angles = capView.angles();
+    mirrorAngles(suggestionView, angles.rx, angles.ry, !fresh);
   }
 
   function renderCaptureIssue(animate) {
@@ -133,10 +166,13 @@
     var known = ['missing', 'centres', 'count', 'twist', 'flip', 'parity', 'corner-order', 'stuck'];
     var code = known.indexOf(report.code) >= 0 ? report.code : 'pieces';
     $('cap-issue-title').textContent = t('repair.' + code + '.title');
-    $('cap-issue-hint').textContent = t(!suggestion && ['twist', 'flip', 'parity', 'corner-order'].indexOf(code) >= 0 ? 'repair.review.hint' : 'repair.' + code + '.hint');
+    // A problem in a piece is answered by the cube below; the other codes
+    // (missing, centres, count) each have something of their own to say.
+    var pieceProblem = ['twist', 'flip', 'parity', 'corner-order', 'pieces'].indexOf(code) >= 0;
+    $('cap-issue-hint').textContent = t(pieceProblem
+      ? (suggestion ? 'repair.suggestion.hint' : 'repair.review.hint')
+      : 'repair.' + code + '.hint');
     $('cap-issue-compare').hidden = !suggestion;
-    $('cap-issue-replay').hidden = !report.groups.length && !suggestion;
-    $('cap-issue-help').hidden = code === 'missing' || code === 'centres' || code === 'count' || code === 'stuck';
     $('cap-issue-prev').disabled = repairIndex === 0;
     $('cap-issue-next').disabled = repairIndex >= report.suggestions.length - 1;
     $('cap-issue-prev').setAttribute('aria-label', t('repair.previous'));
@@ -156,7 +192,13 @@
     });
     var groups = suggestion ? suggestion.pieces : report.groups;
     var options = suggestion || { indices: groups.reduce(function (all, p) { return all.concat(p); }, []), pieces: groups };
-    capView.showRepair(Object.assign({}, options, { animate: !!animate }), repairPhase);
+    // Without a suggestion to compare against, point at the suspect stickers.
+    // The turn to the piece is always played: it is not decoration but how the
+    // child is shown which piece is meant, and a cube that simply appears at a
+    // new angle says nothing about where it went.
+    capView.showRepair({ indices: options.indices, pieces: options.pieces,
+      point: !suggestion, animate: true });
+    renderSuggestionCube(suggestion);
   }
 
   function showCaptureIssue(report) {
@@ -165,24 +207,10 @@
     captureIssue = report; repairIndex = 0;
     $('cap-msg').hidden = true;
     $('cap-issue').hidden = false;
-    $('cap-issue-badge').hidden = !report.groups.length && !report.suggestions.length;
-    $('cap-issue-help').open = false;
     renderCaptureIssue();
     $('cap-issue-title').focus({ preventScroll: true });
     if ($('cap-cube').scrollIntoView) $('cap-cube').scrollIntoView({ block: 'start',
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  }
-
-  function applyRepair() {
-    if (!captureIssue || !captureIssue.source.every(function (c, i) { return c === names[i]; })) return;
-    var suggestion = captureIssue.suggestions[repairIndex];
-    if (!suggestion || !CHECK.assess(suggestion.after).ok) return;
-    names = suggestion.after.slice();
-    paintModel();
-    $('cap-msg').className = 'small center kept-line';
-    $('cap-msg').textContent = t('repair.applied');
-    $('cap-msg').hidden = false;
-    $('cap-solve').focus({ preventScroll: true });
   }
 
   /* The colours are kept on this device, so a cube read once does not have to
@@ -427,19 +455,21 @@
         cam.handFixed[L.FACE_ORDER[Math.floor(idx / 9)]] = true;
         paintModel();
       });
-      /* The side facing the child glows: that is the one the camera writes onto. */
-      capView.onView(function (rx, ry) {
-        capView.focus(K.frameFromView(rx, ry).front);
+      /* While the camera is on, the side facing the child glows: that is the
+       * one it writes onto. With the camera off, nothing is singled out. */
+      capView.onView(function (rx, ry, face, smooth) {
+        capView.focus(cam.on ? K.frameFromView(rx, ry).front : null);
+        mirrorAngles(suggestionView, rx, ry, smooth);
       });
     }
     if (!capPalette) capPalette = makePalette($('cap-palette'), setBrush, 'white');
     setBrush(capPalette.get());
     paintModel();
     var done = 6 - facesLeft();
-    if (!fresh && !randomFill && done) {
+    if (!fresh && !randomFill && done && done < 6) {
       $('cap-msg').hidden = false;
       $('cap-msg').className = 'small center kept-line';
-      $('cap-msg').textContent = done === 6 ? t('cap.kept.all') : t('cap.kept.some', { n: done });
+      $('cap-msg').textContent = t('cap.kept.some', { n: done });
     }
   }
 
@@ -462,6 +492,7 @@
     $('cap-msg').hidden = true;
     $('cam-status').textContent = t('cam.starting');
     $('cap-open-cam').classList.add('on');
+    lightFacingSide();
     startStream();
   }
   function stopCamera() {
@@ -470,6 +501,14 @@
     stopStream();
     $('cam-dock').hidden = true;
     $('cap-open-cam').classList.remove('on');
+    lightFacingSide();
+  }
+
+  /** Light the side the camera is aimed at, or no side while it is off. */
+  function lightFacingSide() {
+    if (!capView) return;
+    var a = capView.angles();
+    capView.focus(cam.on ? K.frameFromView(a.rx, a.ry).front : null);
   }
 
   /**
@@ -719,9 +758,6 @@
       // The camera still sees the previous physical side while the model turns.
       stopCamera();
       capView.showMissing();
-      $('cap-msg').hidden = false;
-      $('cap-msg').className = 'small warn-line center';
-      $('cap-msg').textContent = t('cap.missing');
       if ($('cap-cube').scrollIntoView) $('cap-cube').scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         block: 'center'
@@ -1068,10 +1104,9 @@
   $('net-redo').onclick = function () { startCapture(false); };
   $('cap-clear').onclick = function () { stopCamera(); startCapture(true); };
   $('cap-solve').onclick = trySolve;
-  $('cap-issue-replay').onclick = function () { renderCaptureIssue(true); };
+  $('cap-issue-close').onclick = clearCaptureIssue;
   $('cap-issue-prev').onclick = function () { if (captureIssue && repairIndex > 0) { repairIndex--; renderCaptureIssue(); } };
   $('cap-issue-next').onclick = function () { if (captureIssue && repairIndex < captureIssue.suggestions.length - 1) { repairIndex++; renderCaptureIssue(); } };
-  $('cap-issue-apply').onclick = applyRepair;
   $('net-solve').onclick = assemble;
   $('coach-next').onclick = function () { step(1); };
   $('coach-back').onclick = function () { step(-1); };

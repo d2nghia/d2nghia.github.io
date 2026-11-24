@@ -49,6 +49,10 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
       getAttribute(name) { return this.attributes[name] ?? null; },
       addEventListener(name, fn) { (this.handlers[name] ||= []).push(fn); },
       emit(name, event) { (this.handlers[name] || []).forEach(fn => fn(event)); },
+      animate(frames, options) {
+        (this.played ||= []).push({ frames, options });
+        return { finished: Promise.resolve() };
+      },
       setPointerCapture(id) { this.capturedPointer = id; },
       releasePointerCapture() { this.capturedPointer = null; },
       focus() { document.activeElement = this; },
@@ -110,6 +114,7 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
       constructor(callback) { this.callback = callback; resizeObservers.push(this); }
       observe(host) { this.host = host; }
     },
+    navigator: { mediaDevices: { getUserMedia: () => new Promise(() => {}) } },
     setTimeout: schedule, clearTimeout: id => tasks.delete(id),
     clearInterval() {}, requestAnimationFrame: fn => schedule(fn, framesPaused ? 1000000 : 16),
     cancelAnimationFrame: id => tasks.delete(id),
@@ -129,14 +134,16 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
   run('progress.js');
   run('validation.js');
   run('cubeview.js');
-  let coach, initial, solution, pendingMove, faceColours, paintSticker;
+  let coach, capture, suggestion, initial, solution, pendingMove, faceColours, paintSticker;
   if (app) {
     if (solved) window.CubeLib.randomScramble = () => [];
     else if (scramble) window.CubeLib.randomScramble = () => scramble;
     const create = window.CubeView.create;
     window.CubeView.create = function (host, colours) {
       const view = create(host, colours);
+      if (host.id === 'cap-issue-cube') suggestion = view;
       if (host.id === 'cap-cube') {
+        capture = view;
         const onSticker = view.onSticker;
         view.onSticker = function (cb) { paintSticker = cb; onSticker(cb); };
       }
@@ -166,13 +173,38 @@ function fixture({ app = false, reducedMotion = false, solved = false, scramble,
   }
   return { window, document, listeners, windowListeners, resizeObservers, get, tick, tasks, settle, advance,
     storage, replacements,
+    /** every painted sticker under a node, whatever it is wrapped in */
+    stickersIn(node) {
+      const found = [];
+      (function walk(el) {
+        if (el.dataset && el.dataset.facelet != null) found.push(el);
+        (el.children || []).forEach(walk);
+      })(node);
+      return found;
+    },
+    /** which way the cube inside a node is facing, whole turns ignored */
+    facing(node) {
+      const turn = this.cubeIn(node).style.transform.match(/rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\)/);
+      assert.ok(turn, 'The cube should carry a rotation');
+      return turn.slice(1).map(angle => ((Number(angle) % 360) + 360) % 360);
+    },
+    /** the cube element inside a node, live or still */
+    cubeIn(node) {
+      let found = null;
+      (function walk(el) {
+        if (!found && el.className === 'cube') found = el;
+        if (!found) (el.children || []).forEach(walk);
+      })(node);
+      return found;
+    },
     paint(index, colour) {
       get('cap-palette').children.find(button => button.title === colour).onclick();
       paintSticker(index);
     },
     pauseFrames() { framesPaused = true; },
     replay() { listeners.keydown({ key: ' ', target: get('coach-cube'), preventDefault() {} }); },
-    get coach() { return coach; }, get initial() { return initial; }, get solution() { return solution; },
+    get coach() { return coach; }, get capture() { return capture; },
+    get suggested() { return suggestion; }, get initial() { return initial; }, get solution() { return solution; },
     get pendingMove() { return pendingMove; },
     get faceColours() { return faceColours; },
     get moves() { return solution.moves.flatMap(m => m.endsWith('2') ? [m[0], m[0]] : [m]); } };
@@ -1290,18 +1322,42 @@ test('Solve diagnoses on the painted cube immediately; previews do not save or s
     assert.match(f.get('cap-issue-title').textContent, pieces === L.CORNERS ? /góc/ : /cạnh/);
     assert.equal(f.get('cap-issue-compare').hidden, false);
     assert.equal(f.initial, undefined, 'Never call the solver for invalid colours');
-    f.tick(1500);
-    assert.equal(f.get('cap-cube').dataset.validationPhase, 'turn');
-    f.tick(900);
-    assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
+    const hex = f.window.CubeView.HEX;
+    const suggestion = V.inspect(names).suggestions[0];
+    for (const sticker of f.stickersIn(f.get('cap-cube'))) {
+      assert.equal(sticker.style.background, hex[names[sticker.dataset.facelet]],
+        'The big cube stays on the colours the child entered');
+    }
+    const shown = f.stickersIn(f.get('cap-issue-cube'));
+    assert.equal(shown.length, 54, 'The suggestion is drawn on a cube of its own');
+    for (const sticker of shown) {
+      assert.equal(sticker.style.background, hex[suggestion.after[sticker.dataset.facelet]]);
+    }
+    assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(f.get('cap-cube')), 'and from the same angle');
+    f.capture.look(12, 34, false);
+    assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(f.get('cap-cube')),
+      'which it keeps while the big cube is turned');
+    f.suggested.look(56, 78, false);
+    assert.deepEqual(f.facing(f.get('cap-cube')), f.facing(f.get('cap-issue-cube')),
+      'and the big cube follows when that one is turned');
+    assert.deepEqual(P.decode(f.window.location.hash).names, names, 'Turning either cube paints nothing');
+    const cube = f.get('cap-cube'), drag = { pointerType: 'mouse', button: 2, target: cube, preventDefault() {} };
+    cube.emit('pointerdown', { ...drag, clientX: 100, clientY: 100 });
+    cube.emit('pointermove', { ...drag, clientX: 170, clientY: 120 });
+    cube.emit('pointerup', { ...drag, clientX: 170, clientY: 120 });
+    assert.equal(f.get('cap-cube').dataset.validationPhase, 'focus', 'Spinning to look from another side keeps the diagnosis');
+    assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(cube));
     f.tick(12000);
+    assert.equal(f.tasks.size, 0, 'Nothing is animating on the big cube');
     assert.equal(f.window.location.hash, originalHash);
     assert.equal(f.storage.get(P.STORE), originalStore);
     assert.deepEqual(P.decode(f.window.location.hash).names, names);
-    f.get('cap-issue-apply').onclick();
+    // The child paints the correction in themselves, one sticker at a time.
+    for (const index of suggestion.indices) f.paint(index, suggestion.after[index]);
     assert.equal(f.get('cap-issue').hidden, true);
     assert.equal(f.get('cap-cube').dataset.validationPhase, undefined);
-    assert.equal(f.get('screen-coach').hidden, true, 'Applying a colour correction does not start a lesson');
+    assert.equal(f.get('cap-issue-cube').dataset.validationPhase, undefined, 'and the suggestion is put away with it');
+    assert.equal(f.get('screen-coach').hidden, true, 'Fixing the colours does not start a lesson by itself');
     assert.equal(V.assess(P.decode(f.window.location.hash).names).ok, true);
     assert.equal(f.storage.get(P.STORE), f.window.location.hash);
     f.get('cap-solve').onclick();
@@ -1324,11 +1380,8 @@ test('other suggestions can be compared, painting dismisses stale diagnoses, and
   f.tick(1500);
   f.paint(0, names[0]);
   assert.equal(f.get('cap-issue').hidden, true);
-  assert.equal(f.get('cap-issue-badge').hidden, true);
+  assert.equal(f.get('cap-cube').dataset.validationPhase, undefined);
   assert.equal(f.tasks.size, 0);
-  const editedHash = f.window.location.hash;
-  f.get('cap-issue-apply').onclick();
-  assert.equal(f.window.location.hash, editedHash, 'A dismissed correction cannot be applied');
   f.get('cap-solve').onclick();
   f.get('cap-clear').onclick();
   assert.equal(f.get('cap-issue').hidden, true);
@@ -1348,54 +1401,41 @@ test('net entry errors also return to an animated cube and count errors have loc
   assert.equal(f.initial, undefined);
 });
 
-test('repair previews stop in a hidden tab, resume on return, and honor reduced motion until replay requested', () => {
+test('the diagnosis drops its highlight in a hidden tab and comes back with it, leaving no timers', () => {
   const names = repairCube(L.EDGES);
   const f = fixture({ app: true, persistence: true, autoSolve: false, reducedMotion: true, hash: P.encode({ view: 'capture', names }) });
   f.get('cap-solve').onclick();
-  assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
-  assert.equal(f.tasks.size, 0);
-  f.get('cap-issue-replay').onclick();
-  f.tick(1100);
-  assert.equal(f.get('cap-cube').dataset.validationPhase, 'turn');
+  assert.equal(f.get('cap-cube').dataset.validationPhase, 'focus');
+  assert.equal(f.tasks.size, 0, 'Reduced motion still turns straight to the piece');
   f.document.hidden = true; f.listeners.visibilitychange();
   assert.equal(f.get('cap-cube').dataset.validationPhase, undefined);
   assert.equal(f.tasks.size, 0);
   f.document.hidden = false; f.listeners.visibilitychange();
-  assert.equal(f.get('cap-cube').dataset.validationPhase, 'preview');
+  assert.equal(f.get('cap-cube').dataset.validationPhase, 'focus');
+  assert.equal(f.stickersIn(f.get('cap-issue-cube')).length, 54);
 });
 
-test('corner and edge correction rotations map every sticker to its verified destination without a jump', () => {
-  const hex = { white: '#fafafa', yellow: '#ffd400', green: '#00a550', blue: '#1769d6', red: '#e1372b', orange: '#ff8400' };
+test('every corner and edge correction is that piece turned in place, nothing else touched', () => {
   for (const pieces of [L.CORNERS, L.EDGES]) for (let n = 0; n < pieces.length; n++) {
-    const names = repairCube(pieces, n), before = names.slice(), r = V.inspect(names), suggestion = r.suggestions[0];
-    const f = fixture(), host = f.get('cap-cube'), view = f.window.CubeView.create(host);
-    view.setNames(names); view.showRepair(suggestion);
-    const cubies = host.children[0].children.filter(e => e.className === 'cubie');
-    const bases = cubies.map(e => e.style.transform);
-    f.tick(1500);
-    const moving = cubies.filter((e, i) => e.style.transform !== bases[i]);
-    assert.equal(moving.length, 1, 'Rotate only the indicated individual piece');
-    assert.match(moving[0].style.transform, /rotate3d\(/);
-    f.tick(696); // Final frame before the 1400ms rotation completes.
-    const match = moving[0].style.transform.match(/rotate3d\(([^)]+)\)/)[1].split(',').map(parseFloat);
-    const axis = match.slice(0, 3), len = Math.hypot(...axis), angle = (pieces === L.CORNERS ? Math.sign(match[3]) * 120 : 180) * Math.PI / 180;
-    const u = axis.map(v => v / len);
-    const cssNormal = i => { const p = L.FACELETS[L.FACE_INDEX[L.FACELETS[i].face] * 9 + 4].pos; return [p[0], -p[1], p[2]]; };
-    for (const from of pieces[n]) {
-      const v = cssNormal(from), dot = u.reduce((s, a, i) => s + a * v[i], 0);
-      const cross = [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
-      const dest = v.map((a, i) => Math.round(a*Math.cos(angle)+cross[i]*Math.sin(angle)+u[i]*dot*(1-Math.cos(angle))));
-      const to = pieces[n].find(i => cssNormal(i).every((a, k) => a === dest[k]));
-      assert.equal(suggestion.after[to], names[from], 'The physical rotation must agree with the recoloured endpoint');
+    const names = repairCube(pieces, n), before = names.slice();
+    const suggestion = V.inspect(names).suggestions[0];
+    const piece = pieces[n], len = piece.length;
+    // The suggestion must be this piece's own stickers moved round by one
+    // whole turn of it: a corner twisted, an edge flipped. Nothing invented.
+    const shifts = [];
+    for (let shift = 1; shift < len; shift++) {
+      if (piece.every((index, k) => suggestion.after[piece[(k + shift) % len]] === names[index])) shifts.push(shift);
     }
-    f.tick(32);
-    assert.equal(host.dataset.validationPhase, 'preview');
-    const stickers = cubies.flatMap(e => e.children).filter(e => e.dataset.facelet != null);
-    for (const index of suggestion.indices) assert.equal(stickers.find(e => e.dataset.facelet === index).style.background, hex[suggestion.after[index]]);
-    assert.deepEqual(names, before);
-    view.stopRepair();
-    assert.equal(f.tasks.size, 0);
-    assert.ok(stickers.every(e => e.style.background === hex[names[e.dataset.facelet]]));
+    assert.equal(shifts.length, 1, 'Exactly one turn of the piece explains the correction');
+    names.forEach((colour, index) => {
+      if (piece.indexOf(index) < 0) assert.equal(suggestion.after[index], colour, 'The rest of the cube is left alone');
+    });
+    for (const index of suggestion.indices) assert.ok(piece.indexOf(index) >= 0, 'Only this piece is singled out');
+    names.forEach((colour, index) => {
+      if (suggestion.after[index] !== colour) assert.ok(suggestion.indices.indexOf(index) >= 0, 'Every changed sticker is singled out');
+    });
+    assert.equal(V.assess(suggestion.after).ok, true, 'and the corrected cube is solvable');
+    assert.deepEqual(names, before, 'Looking at a suggestion never edits the entered colours');
   }
 });
 
@@ -1472,4 +1512,56 @@ test('every Solve press keeps the cube on the tried shelf, newest first, never t
   assert.equal(picked.view, 'capture');
   assert.equal(picked.names[0], 'red');
   assert.equal(picked.names[1], 'green', 'The cube comes back exactly as it was pressed');
+});
+
+test('the glowing side belongs to the camera: nothing is singled out while it is off', () => {
+  const f = fixture({ app: true, persistence: true, autoSolve: false });
+  const lit = () => f.cubeIn(f.get('cap-cube')).children
+    .filter(el => el.className === 'face-light' && el.classList.contains('is-lit')).length;
+  assert.equal(lit(), 0, 'Painting on your own needs no side picked out');
+  f.get('cap-open-cam').onclick();
+  assert.equal(lit(), 1, 'The camera writes onto the side facing the child, so that one glows');
+  f.get('cam-close').onclick();
+  assert.equal(lit(), 0);
+});
+
+test('the way out of the suggestions puts them away and leaves the colours alone', () => {
+  const names = repairCube(L.CORNERS);
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+  f.get('cap-solve').onclick();
+  assert.equal(f.get('cap-issue').hidden, false);
+  const hash = f.window.location.hash;
+  f.get('cap-issue-close').onclick();
+  assert.equal(f.get('cap-issue').hidden, true);
+  assert.equal(f.get('cap-cube').dataset.validationPhase, undefined, 'the big cube goes back to normal');
+  assert.equal(f.get('cap-issue-cube').dataset.validationPhase, undefined, 'and so does the suggested one');
+  assert.equal(f.window.location.hash, hash, 'Leaving the suggestions repaints nothing');
+  assert.equal(f.tasks.size, 0);
+  assert.deepEqual(P.decode(f.window.location.hash).names, names);
+});
+
+test('stepping to another suggestion turns both cubes over, and dragging keeps them together', () => {
+  const names = repairCube(L.CORNERS);
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+  f.get('cap-solve').onclick();
+  const before = f.facing(f.get('cap-cube'));
+  f.get('cap-issue-next').onclick();
+  for (const id of ['cap-cube', 'cap-issue-cube']) {
+    const turn = (f.cubeIn(f.get(id)).played || []).at(-1);
+    assert.ok(turn, 'both cubes play the turn to the next piece: ' + id);
+    assert.equal(turn.options.duration, 550);
+    assert.notEqual(turn.frames[0].transform, turn.frames[1].transform, 'from where it was to where it goes');
+    assert.equal(turn.frames[1].transform, f.cubeIn(f.get(id)).style.transform, 'ending where the cube now is');
+  }
+  assert.notDeepEqual(f.facing(f.get('cap-cube')), before, 'and the angle really changes');
+  assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(f.get('cap-cube')));
+  // A drag is the opposite case: the other cube has to keep up, not lag behind.
+  const cube = f.get('cap-cube'), drag = { pointerType: 'mouse', button: 2, target: cube, preventDefault() {} };
+  cube.emit('pointerdown', { ...drag, clientX: 100, clientY: 100 });
+  cube.emit('pointermove', { ...drag, clientX: 180, clientY: 130 });
+  const played = (f.cubeIn(f.get('cap-issue-cube')).played || []).length;
+  cube.emit('pointermove', { ...drag, clientX: 220, clientY: 150 });
+  cube.emit('pointerup', { ...drag, clientX: 220, clientY: 150 });
+  assert.equal((f.cubeIn(f.get('cap-issue-cube')).played || []).length, played, 'a drag is followed at once, not played');
+  assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(cube));
 });

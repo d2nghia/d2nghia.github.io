@@ -460,7 +460,7 @@ body.is-starting .wrap {
   position: absolute; inset: 0; pointer-events: none; backface-visibility: hidden;
 }
 .turn-guide svg { width: 100%; height: 100%; overflow: visible; }
-.turn-guide path, .validation-arrow path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.turn-guide path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .turn-guide-shadow { stroke: #10252e; stroke-width: 10px; }
 .turn-guide-ink { stroke: #bafff0; stroke-width: 5px; }
 
@@ -469,28 +469,28 @@ body.is-starting .wrap {
 .capture-issue-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .capture-issue h2 { font-size: 1.1rem; line-height: 1.3; }
 .capture-issue > p { font-size: .85rem; margin-top: 8px; }
-.repair-replay { flex-shrink: 0; font-size: .78rem; min-height: 40px; }
+.repair-close { flex-shrink: 0; font-size: .78rem; min-height: 40px; }
 .repair-compare { display: grid; justify-items: center; gap: 10px; margin-top: 12px; text-align: center; }
+/* the suggested cube: the same mat, size and lighting as the cube above it,
+   and spinnable in the same way (there is nothing to paint on it) */
+.repair-cube {
+  width: 100%; display: grid; place-items: center; padding: 14px; touch-action: none;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(255, 255, 255, .12), transparent 60%), var(--mat);
+  border-radius: 20px;
+}
+.repair-cube .cube-stage { max-width: 420px; max-height: 52vh; }
+/* stepping to another suggestion recolours this cube: fade, never flick */
+.repair-cube .sticker { transition: background-color .3s ease; }
 .repair-options { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: .85rem; }
 .repair-options .btn { min-width: 40px; min-height: 40px; padding: 4px 10px; font-size: 1.2rem; }
-.repair-cube-label { position: absolute; top: 12px; left: 12px; right: 12px; pointer-events: none; text-align: center; font-size: .8rem; font-weight: 700; color: #bafff0; }
-.repair-help { margin-top: 14px; color: var(--muted); font-size: .75rem; }
-.repair-help summary { cursor: pointer; }
-.repair-help p { margin-top: 8px; }
 .repair-counts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
 .repair-counts > span { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; font-size: .8rem; border: 1px solid var(--line); }
 .repair-counts > .wrong-count { border-color: #c86a2b; font-weight: 700; }
 .repair-counts i { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #0003; }
-.cube.repairing { transition: transform .55s ease, opacity .16s ease; }
-.cube.repair-reset { opacity: 0; }
+.cube.repairing { transition: opacity .16s ease; }
 .cube.repairing .sticker[data-facelet]::after { opacity: .62; }
 .cube.repairing .sticker.validation-target::after { opacity: 0; }
 .cube.repairing .sticker.validation-target { outline: 2px solid #bafff0; outline-offset: -2px; box-shadow: 0 0 14px #bafff0aa !important; }
-.cube.repair-paint .sticker { transition: background-color 1.4s ease; }
-.validation-arrow { position: absolute; inset: 0; pointer-events: none; transform: translateZ(.5px); }
-.validation-arrow svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.validation-arrow .turn-guide-shadow { stroke-width: 5px; }
-.validation-arrow .turn-guide-ink { stroke-width: 2.5px; }
 .cube.repairing .needs-colour::before, .cube.repairing .missing-pointer, .cube.repairing .missing-pointer > span { animation-iteration-count: infinite; }
 @media (prefers-reduced-motion: reduce) {
   .cube.repairing .needs-colour::before, .cube.repairing .missing-pointer, .cube.repairing .missing-pointer > span { animation: none !important; }

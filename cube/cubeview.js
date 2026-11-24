@@ -170,10 +170,16 @@
       return candidates.sort(function (a, b) { return a.distance - b.distance; })[0];
     }
 
+    var TURN_MS = 550, TURN_EASE = 'cubic-bezier(.4,0,.2,1)';
+    function pose(rx, ry) { return 'rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)'; }
     function look(rx, ry, smooth) {
-      built.cube.style.transition = smooth ? 'transform .55s cubic-bezier(.4,0,.2,1)' : 'none';
+      var from = pose(view.rx, view.ry), to = pose(rx, ry);
+      built.cube.style.transition = 'none';
       view.rx = rx; view.ry = ry;
-      applyView();
+      applyView(smooth);
+      if (!smooth || from === to || !built.cube.animate) return;
+      built.cube.animate([{ transform: from }, { transform: to }],
+        { duration: TURN_MS, easing: TURN_EASE });
     }
 
     function showMissing() {
@@ -196,9 +202,9 @@
       hintTimer = setTimeout(clearHints, 2250);
     }
 
-    function applyView() {
-      built.cube.style.transform = 'rotateX(' + view.rx + 'deg) rotateY(' + view.ry + 'deg)';
-      if (onView) onView(view.rx, view.ry, facingFace(view.rx, view.ry));
+    function applyView(smooth) {
+      built.cube.style.transform = pose(view.rx, view.ry);
+      if (onView) onView(view.rx, view.ry, facingFace(view.rx, view.ry), !!smooth);
     }
     /** Draw whatever has been read so far; anything still unknown stays grey. */
     function paintByName() {
@@ -207,12 +213,12 @@
           var idx = FACELET_AT[c.pos.join(',') + '|' + f];
           var el = c.faces[f];
           if (idx == null) { el.style.background = glass ? 'transparent' : DEAD; el.style.boxShadow = 'none'; return; }
-          var n = repair && repair.preview && repair.after ? repair.after[idx] : names[idx];
+          var n = names[idx];
           el.style.background = n ? HEX[n] : (glass ? 'transparent' : UNSEEN);
           el.style.boxShadow = n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
           el.classList.toggle('is-focused', f === focusFace);
           el.classList.toggle('validation-target', !!repair && repair.indices.indexOf(idx) >= 0);
-          markMissing(el, (!n && f === hintFace) || (!!repair && !repair.after && repair.indices.indexOf(idx) >= 0));
+          markMissing(el, (!n && f === hintFace) || (!!repair && repair.point && repair.indices.indexOf(idx) >= 0));
         });
       });
     }
@@ -390,86 +396,38 @@
       if (!repair) return;
       var old = repair;
       repair = null;
-      clearTimeout(old.timer); cancelAnimationFrame(old.frame);
-      old.guides.forEach(function (el) { el.remove(); });
-      built.cubies.forEach(function (c) { c.el.style.transform = base(c.pos); });
-      built.cube.classList.remove('repairing', 'repair-reset', 'repair-paint');
+      built.cube.classList.remove('repairing');
       delete host.dataset.validationPhase;
       clearHints(); repaint(null);
       if (old.onPhase) old.onPhase('stopped');
     }
 
-    // Correction demos are independent of real cube turns: they preview how
-    // entered sticker colours might be rearranged, without modifying input.
+    /**
+     * Turn the cube to the pieces the validator is unsure about and light
+     * them up. The colours stay exactly as the child entered them: the
+     * suggested colours are drawn on a second cube beside this one, at the
+     * same angle, so the two can be held up against the real cube.
+     *
+     * @param {object} options indices (the stickers in question), pieces,
+     *   point (add a pointer at each one, for a problem with no suggestion),
+     *   animate (turn there even when reduced motion is asked for),
+     *   hold (leave the angle alone: this cube is following another one)
+     */
     function showRepair(options, onPhase) {
       stopDemo(); clearHints();
       if (!names || !options.indices || !options.indices.length) return;
-      var r = { indices: options.indices.slice(), after: options.after || null, pieces: options.pieces || [],
-        preview: false, timer: 0, frame: 0, guides: [], onPhase: onPhase };
-      repair = r;
+      repair = { indices: options.indices.slice(), pieces: options.pieces || [],
+        point: !!options.point, onPhase: onPhase };
       built.cube.classList.add('repairing');
-      built.cube.classList.toggle('repair-paint', options.kind === 'paint');
-      function phase(name) { host.dataset.validationPhase = name; if (onPhase) onPhase(name); }
-      function later(fn, ms) { r.timer = setTimeout(function () { if (repair !== r) return; if (document.hidden) { stopRepair(); return; } fn(); }, ms); }
-      var first = L.FACELETS[r.indices[0]], p = first.pos;
+      var p = L.FACELETS[repair.indices[0]].pos;
       function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
       var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       var rx = p[1] ? (p[1] > 0 ? -42 : 42) : -16;
       var ry = -Math.atan2(p[0], p[2]) * 180 / Math.PI;
-      look(near(rx, view.rx), near(ry, view.ry), !reduce);
-      if (!reduce) built.cube.style.transition += ', opacity .16s ease';
-      built.cubies.forEach(function (c) {
-        Object.keys(c.faces).forEach(function (face) {
-          var index = FACELET_AT[c.pos.join(',') + '|' + face];
-          if (r.indices.indexOf(index) < 0 || !r.after) return;
-          var guide = document.createElement('div'); guide.className = 'validation-arrow'; guide.setAttribute('aria-hidden', 'true');
-          var path = options.kind === 'twist' || options.kind === 'flip'
-            ? 'M10 24 A13 13 0 1 1 31 31 M22 31 H31 V22' : 'M7 22 H27 M20 15 L27 22 L20 29';
-          guide.innerHTML = '<svg viewBox="0 0 44 44"><path class="turn-guide-shadow" d="' + path + '"/><path class="turn-guide-ink" d="' + path + '"/>' +
-            (options.kind === 'paint' ? '<circle cx="35" cy="22" r="5" fill="' + HEX[r.after[index]] + '" stroke="#10252e" stroke-width="1.5"/>' : '') + '</svg>';
-          c.faces[face].appendChild(guide); r.guides.push(guide);
-        });
-      });
-      var piece = r.pieces[0], rotating = piece && (options.kind === 'twist' || options.kind === 'flip');
-      var cubie = rotating && built.cubies.find(function (c) { return c.pos.every(function (v, i) { return v === L.FACELETS[piece[0]].pos[i]; }); });
-      var axis = cubie && cubie.pos, target = 180;
-      if (cubie && options.kind === 'twist') {
-        var from = piece[0], to = piece.find(function (i) { return r.after[i] === names[from]; });
-        var normal = L.FACELETS[L.FACE_INDEX[L.FACELETS[from].face] * 9 + 4].pos;
-        var dest = L.FACELETS[L.FACE_INDEX[L.FACELETS[to].face] * 9 + 4].pos;
-        var cross = [axis[1] * normal[2] - axis[2] * normal[1], axis[2] * normal[0] - axis[0] * normal[2], axis[0] * normal[1] - axis[1] * normal[0]];
-        target = cross.reduce(function (sum, v, i) { return sum + v * dest[i]; }, 0) > 0 ? -120 : 120;
-      }
-      function pose(t) {
-        if (!cubie) return;
-        var lift = Math.sin(Math.PI * t) * 8;
-        cubie.el.style.transform = base(axis) + ' translate3d(' + axis[0] * lift + 'px,' + -axis[1] * lift + 'px,' + axis[2] * lift + 'px) rotate3d(' + axis[0] + ',' + -axis[1] + ',' + axis[2] + ',' + target * t + 'deg)';
-      }
-      function begin() {
-        r.preview = false; repaint(null); phase('focus');
-        later(function () {
-          phase('turn');
-          if (!cubie) { r.preview = true; repaint(null); }
-          var start = performance.now(), duration = 1400;
-          r.frame = requestAnimationFrame(function animate(now) {
-            if (repair !== r) return;
-            var t = Math.min(1, (now - start) / duration), ease = t * t * (3 - 2 * t);
-            pose(ease);
-            if (t < 1) r.frame = requestAnimationFrame(animate);
-            else {
-              r.preview = true; if (cubie) cubie.el.style.transform = base(cubie.pos);
-              repaint(null); phase('preview');
-              later(function () {
-                phase('reset'); built.cube.classList.add('repair-reset');
-                later(function () { r.preview = false; repaint(null); built.cube.classList.remove('repair-reset'); begin(); }, 200);
-              }, 1300);
-            }
-          });
-        }, 800);
-      }
-      if (reduce) { r.preview = !!r.after; repaint(null); phase(r.after ? 'preview' : 'focus'); }
-      else if (r.after) begin();
-      else { repaint(null); phase('focus'); }
+      if (!options.hold) look(near(rx, view.rx), near(ry, view.ry), !reduce);
+      repaint(null);
+      host.dataset.validationPhase = 'focus';
+      if (onPhase) onPhase('focus');
     }
 
     /* Painting is always on: with a mouse, left paints a sticker (and keeps
@@ -516,7 +474,8 @@
       }
       if (mouse && e.button !== 0 && e.button !== 2) return;   // leave the middle button alone
       if (mouse && e.button === 2) e.preventDefault();
-      stopRepair();
+      // Spinning the cube is how a diagnosis is looked at from another side,
+      // so the highlight stays; only painting a sticker dismisses it.
       startDrag(e);
     });
     surface.addEventListener('pointermove', function (e) {
@@ -664,7 +623,7 @@
   /**
    * @param {Int8Array} state the cube to draw
    * @param {object} [opts] size, faceColour, mask(faceletIndex), move (draws the arrow
-   *   and lights up the layer that turns), caption
+   *   and lights up the layer that turns), caption, rx/ry (the angle to draw it from)
    */
   function figure(state, opts) {
     opts = opts || {};
