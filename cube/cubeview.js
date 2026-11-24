@@ -412,6 +412,8 @@
      *   point (add a pointer at each one, for a problem with no suggestion),
      *   animate (turn there even when reduced motion is asked for),
      *   hold (leave the angle alone: this cube is following another one)
+     * @returns {object} the angle chosen and how many stickers it leaves
+     *   hidden, or nothing if there was nothing to show
      */
     function showRepair(options, onPhase) {
       stopDemo(); clearHints();
@@ -421,11 +423,12 @@
       built.cube.classList.add('repairing');
       function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
       var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var aim = aimAngles(repair.indices, view);
+      var aim = aimAngles(repair.indices, repair.pieces, view);
       if (!options.hold) look(near(aim.rx, view.rx), near(aim.ry, view.ry), !reduce);
       repaint(null);
       host.dataset.validationPhase = 'focus';
       if (onPhase) onPhase('focus');
+      return aim;
     }
 
     /* Painting is always on: with a mouse, left paints a sticker (and keeps
@@ -552,37 +555,54 @@
   var AIM_SEEN = 0.3;
 
   /**
-   * An angle showing as many of these stickers as a cube can show at once. The
-   * stickers of one piece sit on two or three sides, so aiming at the first of
-   * them can turn the rest out of sight, and a difference the child cannot see
-   * is one they cannot copy. Sides that face away are left out of the
-   * reckoning: where some must be hidden - opposite sides cannot both be seen
-   * - the ones on show are better turned towards the child than all of them
-   * left at a glancing angle.
+   * An angle showing as much of these stickers as a cube can show at once.
+   * Aiming at the first of them turns the rest out of sight, and a difference
+   * the child cannot see is one they cannot copy.
+   *
+   * No cube shows opposite sides at once, so something sometimes has to stay
+   * hidden. Which one matters: a piece with every sticker round the back has
+   * gone missing from the comparison altogether, while a piece still showing
+   * one square can at least be found. So views are judged first on how many of
+   * the pieces they leave something of, then on how many stickers in all, then
+   * on how squarely those face the child, and last on how little the cube has
+   * to turn to get there.
    */
-  function aimAngles(indices, at) {
-    var normals = [];
-    indices.forEach(function (idx) {
-      var n = L.FACELETS[L.FACE_INDEX[L.FACELETS[idx].face] * 9 + 4].pos;
-      if (normals.indexOf(n) < 0) normals.push(n);
+  function aimAngles(indices, pieces, at) {
+    var groups = [], held = {};
+    function normalOf(idx) {
+      return L.FACELETS[L.FACE_INDEX[L.FACELETS[idx].face] * 9 + 4].pos;
+    }
+    (pieces || []).forEach(function (piece) {
+      var group = [];
+      piece.forEach(function (idx) {
+        if (indices.indexOf(idx) < 0) return;
+        held[idx] = true;
+        group.push(normalOf(idx));
+      });
+      if (group.length) groups.push(group);
     });
+    indices.forEach(function (idx) { if (!held[idx]) groups.push([normalOf(idx)]); });
     var best = null;
     for (var i = 0; i < AIM_TILTS.length; i++) {
       for (var ry = -177; ry < 180; ry += 6) {
-        var rx = AIM_TILTS[i], seen = 0, worst = Infinity, total = 0, top = -Infinity;
-        for (var j = 0; j < normals.length; j++) {
-          var z = faceDepth(normals[j], rx, ry);
-          if (z > top) top = z;
-          if (z < AIM_SEEN) continue;
-          seen++; total += z;
-          if (z < worst) worst = z;
+        var rx = AIM_TILTS[i], kept = 0, seen = 0, worst = Infinity, total = 0, top = -Infinity;
+        for (var g = 0; g < groups.length; g++) {
+          var any = false;
+          for (var j = 0; j < groups[g].length; j++) {
+            var z = faceDepth(groups[g][j], rx, ry);
+            if (z > top) top = z;
+            if (z < AIM_SEEN) continue;
+            any = true; seen++; total += z;
+            if (z < worst) worst = z;
+          }
+          if (any) kept++;
         }
         if (!seen) { worst = top; total = top; }
-        // Between views that show the stickers equally well, the nearer one
-        // wins, so the cube turns no further than it has to.
         var away = Math.abs(rx - at.rx) + Math.abs(((ry - at.ry) % 360 + 540) % 360 - 180);
-        var score = seen * 10 + worst + 0.2 * (total / Math.max(seen, 1)) - away * 0.0005;
-        if (!best || score > best.score) best = { rx: rx, ry: ry, score: score };
+        var score = kept * 1000 + seen * 10 + worst + 0.2 * (total / Math.max(seen, 1)) - away * 0.0005;
+        if (!best || score > best.score) {
+          best = { rx: rx, ry: ry, score: score, seen: seen, hidden: indices.length - seen };
+        }
       }
     }
     return best;

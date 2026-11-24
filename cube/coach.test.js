@@ -1565,46 +1565,92 @@ test('stepping to another suggestion turns both cubes over, and dragging keeps t
   assert.equal((f.cubeIn(f.get('cap-issue-cube')).played || []).length, played, 'a drag is followed at once, not played');
   assert.deepEqual(f.facing(f.get('cap-issue-cube')), f.facing(cube));
 });
-
-test('both cubes turn to an angle that shows every sticker in question', () => {
+test('both cubes turn to the angle that shows the most of the pieces in question', () => {
   // How far a side leans towards the viewer: below 0.3 it is too edge-on to
-  // read a colour off. Opposite sides can never both be seen, so the most a
-  // view can show is one side per axis.
+  // read a colour off. Opposite sides can never both face the child, so some
+  // views are simply impossible; what is asked here is the best one there is.
   const depth = (face, [rx, ry]) => {
     const n = L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos;
     const x = rx * Math.PI / 180, y = ry * Math.PI / 180;
     return -n[1] * Math.sin(x) + (-n[0] * Math.sin(y) + n[2] * Math.cos(y)) * Math.cos(x);
   };
+  // Every view, finer than the one the page searches, so the answer is reached
+  // another way: how many pieces keep a square in sight, and how many squares.
+  const views = [];
+  for (let rx = -70; rx <= 70; rx += 2) for (let ry = -180; ry < 180; ry += 2) views.push([rx, ry]);
+  const counts = (groups, angle) => {
+    let kept = 0, seen = 0;
+    for (const sides of groups) {
+      const visible = sides.filter(face => depth(face, angle) >= 0.3).length;
+      if (visible) kept++;
+      seen += visible;
+    }
+    return { kept, seen };
+  };
+  const theBest = (f, id, groups) => {
+    let best = { kept: -1, seen: -1 };
+    for (const angle of views) {
+      const at = counts(groups, angle);
+      if (at.kept > best.kept || (at.kept === best.kept && at.seen > best.seen)) best = at;
+    }
+    const angle = f.facing(f.get(id));
+    const at = counts(groups, angle);
+    const where = id + ' at ' + angle + ' with ' + groups.map(g => g.join('')).join(' / ');
+    assert.equal(at.kept, best.kept, 'every piece that can keep a square in sight does: ' + where);
+    assert.equal(at.seen, best.seen, 'and as many squares as that angle allows: ' + where);
+  };
+
   for (const pieces of [L.CORNERS, L.EDGES]) {
     const names = repairCube(pieces);
     const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
     f.get('cap-solve').onclick();
-    const allShown = (id, sides) => {
-      const angle = f.facing(f.get(id));
-      const axes = new Set(sides.map(face => L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos.findIndex(v => v)));
-      const shown = sides.filter(face => depth(face, angle) >= 0.3);
-      assert.equal(shown.length, axes.size,
-        'every side that can be seen at once is: ' + id + ' at ' + angle + ' shows ' + shown + ' of ' + sides);
-    };
-    for (let step = 0; step < 8; step++) {
+    const report = V.inspect(names);
+    for (let step = 0; step < 8 && step < report.suggestions.length; step++) {
       const lit = f.stickersIn(f.get('cap-cube')).filter(el => el.classList.contains('validation-target'));
       assert.ok(lit.length, 'a suggestion always marks the stickers it means');
-      const sides = [...new Set(lit.map(el => L.FACELETS[el.dataset.facelet].face))];
-      for (const id of ['cap-cube', 'cap-issue-cube']) allShown(id, sides);
+      const groups = report.suggestions[step].pieces
+        .map(piece => piece.filter(i => lit.some(el => Number(el.dataset.facelet) === i))
+          .map(i => L.FACELETS[i].face));
+      for (const id of ['cap-cube', 'cap-issue-cube']) theBest(f, id, groups);
       f.get('cap-issue-next').onclick();
     }
-    // Two pieces far apart are the hard case: aiming at the first sticker
-    // alone used to leave the rest of them round the back.
+    // Pieces far apart are the hard case: aiming at the first sticker alone
+    // used to leave the rest of them round the back.
     const facelet = (face, row, col) => L.FACE_INDEX[face] * 9 + row * 3 + col;
     const spreads = [
-      [facelet('F', 1, 1), facelet('R', 1, 1)],
-      [facelet('U', 2, 2), facelet('F', 0, 2), facelet('R', 0, 0)],
-      [facelet('F', 1, 0), facelet('L', 1, 2), facelet('U', 1, 1)],
-      [facelet('F', 0, 1), facelet('U', 2, 1), facelet('B', 2, 1), facelet('D', 2, 1)]
+      [[facelet('F', 1, 1)], [facelet('R', 1, 1)]],
+      [[facelet('U', 2, 2), facelet('F', 0, 2), facelet('R', 0, 0)]],
+      [[facelet('F', 1, 0), facelet('L', 1, 2)], [facelet('U', 1, 1)]],
+      [[facelet('U', 0, 1), facelet('B', 0, 1)], [facelet('D', 0, 1), facelet('F', 2, 1)]]
     ];
-    for (const indices of spreads) {
-      f.capture.showRepair({ indices, animate: true });
-      allShown('cap-cube', [...new Set(indices.map(i => L.FACELETS[i].face))]);
+    for (const spread of spreads) {
+      const indices = spread.reduce((all, piece) => all.concat(piece), []);
+      f.capture.showRepair({ indices, pieces: spread, animate: true });
+      theBest(f, 'cap-cube', spread.map(piece => piece.map(i => L.FACELETS[i].face)));
     }
   }
+});
+
+test('a square that has to stay round the back is said to be there', () => {
+  // Two squares on opposite sides: no angle shows both, so the child is told
+  // rather than left comparing against something they cannot see.
+  // Two edges in each other's places: a swap that face turns cannot reach, and
+  // one whose suggestions include pieces lying on one and the same axis.
+  const names = Array.from(L.solvedState(), i => ['white', 'red', 'green', 'yellow', 'orange', 'blue'][i]);
+  const [first, second] = L.EDGES;
+  first.forEach((index, n) => { [names[index], names[second[n]]] = [names[second[n]], names[index]]; });
+  const f = fixture({ app: true, persistence: true, autoSolve: false, hash: P.encode({ view: 'capture', names }) });
+  f.get('cap-solve').onclick();
+  const report = V.inspect(names);
+  const axisOf = i => L.FACELETS[L.FACE_INDEX[L.FACELETS[i].face] * 9 + 4].pos.findIndex(v => v);
+  const hidden = report.suggestions.findIndex(s =>
+    s.indices.length === 2 && axisOf(s.indices[0]) === axisOf(s.indices[1]));
+  assert.ok(hidden > 0, 'this cube offers a suggestion whose squares face opposite ways');
+  const plain = f.get('cap-issue-hint').textContent;
+  for (let step = 0; step < hidden; step++) f.get('cap-issue-next').onclick();
+  const told = f.get('cap-issue-hint').textContent;
+  assert.notEqual(told, plain);
+  assert.match(told, /khu\u1EA5t/, 'the hint says a square is round the back');
+  f.get('cap-issue-prev').onclick();
+  assert.equal(f.get('cap-issue-hint').textContent, plain, 'and stops saying so once it is not');
 });

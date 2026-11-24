@@ -169,7 +169,7 @@
     // A problem in a piece is answered by the cube below; the other codes
     // (missing, centres, count) each have something of their own to say.
     var pieceProblem = ['twist', 'flip', 'parity', 'corner-order', 'pieces'].indexOf(code) >= 0;
-    $('cap-issue-hint').textContent = t(pieceProblem
+    var hint = t(pieceProblem
       ? (suggestion ? 'repair.suggestion.hint' : 'repair.review.hint')
       : 'repair.' + code + '.hint');
     $('cap-issue-compare').hidden = !suggestion;
@@ -196,9 +196,12 @@
     // The turn to the piece is always played: it is not decoration but how the
     // child is shown which piece is meant, and a cube that simply appears at a
     // new angle says nothing about where it went.
-    capView.showRepair({ indices: options.indices, pieces: options.pieces,
+    var aim = capView.showRepair({ indices: options.indices, pieces: options.pieces,
       point: !suggestion, animate: true });
     renderSuggestionCube(suggestion);
+    // Opposite sides cannot both face the child, so now and then a square has
+    // to stay round the back. Saying so beats leaving them hunting for it.
+    $('cap-issue-hint').textContent = hint + (aim && aim.hidden ? ' ' + t('repair.hidden.hint') : '');
   }
 
   function showCaptureIssue(report) {
