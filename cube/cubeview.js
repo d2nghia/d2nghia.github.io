@@ -426,10 +426,13 @@
       var span = document.createElement('span');
       span.className = 'repair-arrow';
       span.style.transform = 'translate(-50%, -50%) rotate(' + Math.round(angle) +
-        'deg) translateX(' + Math.round(radius) + 'px) rotate(180deg)';
+        'deg) translateX(' + Math.round(radius) + 'px)';
+      // One even bend, like a hand sweeping round the cube: it comes in from
+      // outside, turns, and runs level into the head, which lies on the line
+      // to the square.
       span.innerHTML = '<svg viewBox="0 0 48 48" focusable="false">' +
-        '<path class="repair-arrow-bend" d="M4 10 C 18 10, 24 24, 36 24" />' +
-        '<path class="repair-arrow-tip" d="M33 14 L47 24 L33 34 Z" /></svg>';
+        '<path class="repair-arrow-bend" d="M41 5 C 41 18, 33 26, 13 26" />' +
+        '<path class="repair-arrow-tip" d="M16 17 L3 26 L16 35 Z" /></svg>';
       return span;
     }
     /* Where a square itself lands on the screen, behind the cube or not: the
