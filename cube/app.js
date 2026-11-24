@@ -153,7 +153,10 @@
     suggestionView.setNames(suggestion.after.slice());
     // It is aimed by the cube above it, in one turn, rather than aiming itself
     // at the piece and then being turned again to match.
-    suggestionView.showRepair({ indices: suggestion.indices, pieces: suggestion.pieces, hold: true });
+    // The arrows belong on this cube alone: it is the one being copied from,
+    // and a pair of cubes both sprouting arrows is a busy thing to read.
+    suggestionView.showRepair({ indices: suggestion.indices, pieces: suggestion.pieces,
+      hold: true, arrows: true });
     // Stepping to another suggestion turns both cubes over to the new piece
     // rather than snapping: a jump leaves no idea of which way the cube moved.
     var angles = capView.angles();

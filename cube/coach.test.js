@@ -1674,29 +1674,37 @@ test('a square round the back is pointed at, and the arrow follows as the cube t
   // other is round the back, and the arrow says on which side.
   const top = L.FACE_INDEX.U * 9 + 4, bottom = L.FACE_INDEX.D * 9 + 4;
   f.capture.look(-42, 0, false);
-  f.capture.showRepair({ indices: [top, bottom], pieces: [[top], [bottom]], hold: true });
-  assert.deepEqual(arrows('cap-cube'), [90], 'the bottom is behind, so the arrow is below the cube');
+  f.capture.showRepair({ indices: [top, bottom], pieces: [[top], [bottom]], hold: true, arrows: true });
+  assert.deepEqual(arrows('cap-cube'), [90], 'the bottom square is behind, so the arrow stands below');
   f.capture.look(42, 0, false);
-  assert.deepEqual(arrows('cap-cube'), [-90], 'turned over, it is the top that is behind');
+  assert.deepEqual(arrows('cap-cube'), [-90], 'turned over, it is the top square that is behind');
   f.capture.look(-42, 0, false);
   assert.deepEqual(arrows('cap-cube'), [90], 'and back again');
+  // Each square has its own arrow, on its own line out of the cube, not one
+  // for the side they share.
+  const back = L.FACE_INDEX.B * 9;
+  f.capture.look(-30, 0, false);
+  f.capture.showRepair({ indices: [back, back + 8], pieces: [[back], [back + 8]], hold: true, arrows: true });
+  const pair = arrows('cap-cube');
+  assert.equal(pair.length, 2, 'two squares behind, two arrows');
+  assert.notEqual(pair[0], pair[1], 'each one on the line to its own square');
   // A corner has all its squares on sides that can be seen together.
   const corner = L.CORNERS.find(piece => piece.every(i => ['U', 'F', 'R'].includes(L.FACELETS[i].face)));
-  f.capture.showRepair({ indices: corner.slice(), pieces: [corner.slice()] });
+  f.capture.showRepair({ indices: corner.slice(), pieces: [corner.slice()], arrows: true });
   assert.deepEqual(arrows('cap-cube'), [], 'nothing is hidden, so nothing is pointed at');
   f.capture.stopRepair();
   assert.deepEqual(arrows('cap-cube'), []);
 
-  // And in the page itself both cubes are marked, the suggested one too.
+  // In the page the arrows belong to the suggested cube alone: it is the one
+  // being copied from, and arrows on both would be a busy thing to read.
   f.get('cap-solve').onclick();
   const axisOf = i => L.FACELETS[L.FACE_INDEX[L.FACELETS[i].face] * 9 + 4].pos.findIndex(v => v);
   const report = V.inspect(names);
   const hidden = report.suggestions.findIndex(s =>
     s.indices.length === 2 && axisOf(s.indices[0]) === axisOf(s.indices[1]));
   for (let step = 0; step < hidden; step++) f.get('cap-issue-next').onclick();
-  assert.equal(arrows('cap-cube').length, 1);
-  assert.deepEqual(arrows('cap-issue-cube'), arrows('cap-cube'), 'both cubes point the same way');
+  assert.equal(arrows('cap-issue-cube').length, 1, 'the suggested cube points at the square behind it');
+  assert.deepEqual(arrows('cap-cube'), [], 'the cube holding the child\'s own colours stays plain');
   f.get('cap-issue-close').onclick();
-  assert.deepEqual(arrows('cap-cube'), [], 'and the arrows go with the suggestions');
-  assert.deepEqual(arrows('cap-issue-cube'), []);
+  assert.deepEqual(arrows('cap-issue-cube'), [], 'and the arrows go with the suggestions');
 });

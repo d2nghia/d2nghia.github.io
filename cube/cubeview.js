@@ -412,24 +412,37 @@
       if (old.onPhase) old.onPhase('stopped');
     }
 
-    /* A curved arrow at the edge a marked square lies behind. Reading comes
+    /* A curved arrow for a marked square that is round the back. Reading comes
      * later than seeing for a child, and spinning the cube is the answer in
      * either case, so the arrow says what the hint says without words. It is
      * redrawn at every angle: the square it points at may come into view, and
-     * the one on the far side goes out of it. */
-    /* The arrow lies along the way to the square, head outwards: it starts on
-     * the face the child is looking at, bends over the edge and points past
-     * it, at the side the square is on. */
-    var ARROW_SIZE = 52, ARROW_CLEAR = 6;
+     * the one on the far side goes out of it.
+     *
+     * It points at the square itself, not at the side the square is on: it
+     * stands outside the cube on the square's own line and its head faces back
+     * in, at the spot the square sits behind. */
+    var ARROW_SIZE = 52, ARROW_CLEAR = 30;
     function arrowTowards(angle, radius) {
       var span = document.createElement('span');
       span.className = 'repair-arrow';
       span.style.transform = 'translate(-50%, -50%) rotate(' + Math.round(angle) +
-        'deg) translateX(' + Math.round(radius) + 'px)';
+        'deg) translateX(' + Math.round(radius) + 'px) rotate(180deg)';
       span.innerHTML = '<svg viewBox="0 0 48 48" focusable="false">' +
         '<path class="repair-arrow-bend" d="M4 10 C 18 10, 24 24, 36 24" />' +
         '<path class="repair-arrow-tip" d="M33 14 L47 24 L33 34 Z" /></svg>';
       return span;
+    }
+    /* Where a square itself lands on the screen, behind the cube or not: the
+     * cubie it belongs to, plus half a cubie out along its own side. */
+    function squareAt(idx) {
+      var facelet = L.FACELETS[idx];
+      var n = L.FACELETS[L.FACE_INDEX[facelet.face] * 9 + 4].pos;
+      var at = faceAt([facelet.pos[0] * S + n[0] * S / 2,
+        facelet.pos[1] * S + n[1] * S / 2,
+        facelet.pos[2] * S + n[2] * S / 2], view.rx, view.ry);
+      var scale = Number(built.cube.style.scale) || 1;
+      var near = DEPTH / Math.max(DEPTH - at.z * scale, 1);
+      return { x: at.x * scale * near, y: at.y * scale * near };
     }
     /* Just outside the cube's outline and never off the mat. The outline is
      * the eight corners as they fall on the screen, since the cube is drawn at
@@ -455,15 +468,15 @@
     function drawArrows() {
       if (!built.arrows) return;
       built.arrows.innerHTML = '';
-      if (!repair) return;
-      var drawn = {};
+      if (!repair || !repair.arrows) return;
       repair.indices.forEach(function (idx) {
-        var face = L.FACELETS[idx].face;
-        if (drawn[face]) return;
-        drawn[face] = true;
-        var at = faceAt(L.FACELETS[L.FACE_INDEX[face] * 9 + 4].pos, view.rx, view.ry);
-        if (at.z >= AIM_SEEN) return;
-        var angle = Math.atan2(at.y, at.x);
+        var side = faceAt(L.FACELETS[L.FACE_INDEX[L.FACELETS[idx].face] * 9 + 4].pos, view.rx, view.ry);
+        if (side.z >= AIM_SEEN) return;
+        // A square straight behind the middle of the cube gives no direction
+        // of its own, and then the side it is on is all there is to go by.
+        var spot = squareAt(idx);
+        var angle = Math.sqrt(spot.x * spot.x + spot.y * spot.y) > 12
+          ? Math.atan2(spot.y, spot.x) : Math.atan2(side.y, side.x);
         built.arrows.appendChild(arrowTowards(angle * 180 / Math.PI, arrowRadius(angle)));
       });
     }
@@ -477,7 +490,8 @@
      * @param {object} options indices (the stickers in question), pieces,
      *   point (add a pointer at each one, for a problem with no suggestion),
      *   animate (turn there even when reduced motion is asked for),
-     *   hold (leave the angle alone: this cube is following another one)
+     *   hold (leave the angle alone: this cube is following another one),
+     *   arrows (point at any of them that end up round the back)
      * @returns {object} the angle chosen and how many stickers it leaves
      *   hidden, or nothing if there was nothing to show
      */
@@ -485,7 +499,7 @@
       stopDemo(); clearHints();
       if (!names || !options.indices || !options.indices.length) return;
       repair = { indices: options.indices.slice(), pieces: options.pieces || [],
-        point: !!options.point, onPhase: onPhase };
+        point: !!options.point, arrows: !!options.arrows, onPhase: onPhase };
       built.cube.classList.add('repairing');
       function near(angle, current) { return angle + 360 * Math.round((current - angle) / 360); }
       var reduce = !options.animate && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
