@@ -27,6 +27,79 @@
     // handedness from a standard factory colour scheme.
     return { base: centres.D, top: centres.U, front: centres.F, names: names, colours: names.map(function (name) { return HEX[name]; }) };
   }
+  /**
+   * The child's own cube held a different way up: the colour they want to start
+   * with goes underneath and the other five follow it round. Their centres are
+   * untouched — this is which way the cube is held, not a different cube.
+   *
+   * @param {object} centres face -> colour name, all six filled in
+   * @param {string} base the colour to start with, on the bottom
+   * @param {string} [keepFront] a colour to leave facing the child if it can be
+   * @returns {object} the same shape as schemeForCentres, or null if it cannot
+   */
+  function schemeWithBase(centres, base, keepFront) {
+    var names = centreNames(centres);
+    if (names.indexOf(null) >= 0 || names.indexOf(base) < 0) return null;
+    var fallback = null;
+    for (var i = 0; i < L.ORIENTATIONS.length; i++) {
+      var turned = names;
+      L.ORIENTATIONS[i].forEach(function (rotation) { turned = L.rotateFaces(turned, rotation); });
+      if (turned[L.FACE_INDEX.D] !== base) continue;
+      var scheme = { base: base, top: turned[L.FACE_INDEX.U], front: turned[L.FACE_INDEX.F],
+        names: turned, colours: turned.map(function (name) { return HEX[name]; }) };
+      if (keepFront && scheme.front === keepFront) return scheme;
+      if (!fallback) fallback = scheme;
+    }
+    return fallback;
+  }
+  /* The guide's whole state in a handful of characters, so a link can drop a
+   * child, or whoever is working on the page, straight back where they were.
+   *
+   * Everything worth keeping is small: six faces each hold one of six colours
+   * or none (7 values), the colour being solved first is one of the six or
+   * none, which steps are open is nine bits, and the step on screen is one of
+   * nine or none. That is one number, 7^6 * 7 * 512 * 10 at the very most,
+   * which is seven characters of base 36. No version marker and no checksum: a
+   * link that does not decode cleanly is simply ignored, and the page opens at
+   * step 1.
+   */
+  var STEPS = 9;
+  function encodeGuide(state) {
+    var digits = L.FACE_ORDER.map(function (face) {
+      var at = NAMES.indexOf((state.centres || {})[face]);
+      return at < 0 ? 0 : at + 1;
+    });
+    var code = digits.reduceRight(function (total, digit) { return total * 7 + digit; }, 0);
+    var base = NAMES.indexOf(state.base) + 1;
+    var open = (state.open || []).reduce(function (bits, step) {
+      return step > 0 && step <= STEPS ? bits | (1 << (step - 1)) : bits;
+    }, 0);
+    var step = state.step > 0 && state.step <= STEPS ? state.step : 0;
+    var number = ((code * 7 + base) * 512 + open) * 10 + step;
+    return number ? number.toString(36) : '';
+  }
+  function decodeGuide(text) {
+    if (!/^[0-9a-z]{1,8}$/.test(text || '')) return null;
+    var number = parseInt(text, 36);
+    if (!(number >= 0) || number >= Math.pow(7, 6) * 7 * 512 * 10) return null;
+    var step = number % 10;
+    var bits = Math.floor(number / 10) % 512;
+    var base = Math.floor(number / 5120) % 7;
+    var code = Math.floor(number / 35840), centres = {}, seen = [], open = [];
+    for (var bit = 0; bit < STEPS; bit++) if (bits & (1 << bit)) open.push(bit + 1);
+    for (var i = 0; i < 6; i++) {
+      var digit = code % 7;
+      code = Math.floor(code / 7);
+      if (!digit) continue;
+      if (seen.indexOf(digit) >= 0) return null;   // one colour cannot be on two sides
+      seen.push(digit);
+      centres[L.FACE_ORDER[i]] = NAMES[digit - 1];
+    }
+    if (code) return null;
+    var baseColour = base ? NAMES[base - 1] : null;
+    if (baseColour && seen.indexOf(base) < 0) return null;  // a colour that is not on the cube
+    return { centres: centres, base: baseColour, open: open, step: step };
+  }
   function assignCentre(centres, face, colour) {
     if (L.FACE_ORDER.indexOf(face) < 0 || NAMES.indexOf(colour) < 0) throw new Error('Invalid centre choice');
     var names = centreNames(centres), next = {}, owner = null;
@@ -133,5 +206,5 @@
     }
     return cubeSVG(L.solvedState(), null, key === 'belt' ? function (f) { return f.face !== 'U' && f.row >= 1; } : key === 'cornerPlace' ? function (f) { return f.face === 'U' || f.row === 0; } : null, colours);
   }
-  return { STAGES: STAGES, COLOURS: COLOURS, NAMES: NAMES, HEX: HEX, schemeForCentres: schemeForCentres, assignCentre: assignCentre, orientation: orientation, quarterTurns: quarterTurns, lesson: lesson, cues: cues, project: project, cubeSVG: cubeSVG, faceSVG: faceSVG, goalSVG: goalSVG };
+  return { STAGES: STAGES, COLOURS: COLOURS, NAMES: NAMES, HEX: HEX, schemeForCentres: schemeForCentres, schemeWithBase: schemeWithBase, encodeGuide: encodeGuide, decodeGuide: decodeGuide, assignCentre: assignCentre, orientation: orientation, quarterTurns: quarterTurns, lesson: lesson, cues: cues, project: project, cubeSVG: cubeSVG, faceSVG: faceSVG, goalSVG: goalSVG };
 });

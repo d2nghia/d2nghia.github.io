@@ -23,6 +23,56 @@ test('every manual example has legal, consecutive quarter-turn pictures and reac
   assert.equal(L.isSolved(double[1].state), false, 'The halfway point of a double turn must be visible');
 });
 
+test('the starting colour is the child’s to choose, and only turns the cube they entered', () => {
+  // Their own cube, not a factory one: red opposite blue, green opposite white,
+  // yellow opposite orange. Choosing a starting colour may not invent a cube.
+  const centres = { U: 'blue', D: 'red', F: 'green', B: 'white', R: 'yellow', L: 'orange' };
+  const pairsOf = names => new Set([['U', 'D'], ['F', 'B'], ['L', 'R']]
+    .map(([a, b]) => [names[L.FACE_INDEX[a]], names[L.FACE_INDEX[b]]].sort().join('|')));
+  const entered = pairsOf(G.schemeForCentres(centres).names);
+  for (const base of G.NAMES) {
+    const scheme = G.schemeWithBase(centres, base);
+    assert.ok(scheme, 'every colour on the cube can be the one to start with: ' + base);
+    assert.equal(scheme.base, base, 'the chosen colour goes underneath');
+    assert.equal(scheme.names[L.FACE_INDEX.D], base);
+    assert.equal(new Set(scheme.names).size, 6, 'still six different colours');
+    assert.deepEqual(pairsOf(scheme.names), entered,
+      'colours that were opposite on their cube stay opposite: ' + base);
+  }
+  // Turning to a new bottom colour leaves the side they were looking at alone.
+  assert.equal(G.schemeWithBase(centres, 'white', 'yellow').front, 'yellow');
+  assert.equal(G.schemeWithBase({ ...centres, R: null }, 'red'), null, 'an unfinished cube has no scheme');
+  assert.equal(G.schemeWithBase(centres, 'purple'), null, 'nor has a colour that is not on it');
+});
+
+test('the guide packs its whole state into a handful of characters, and rejects a damaged one', () => {
+  const centres = { U: 'blue', D: 'red', F: 'green', B: 'white', R: 'yellow', L: 'orange' };
+  const full = { centres, base: 'white', open: [1, 3, 7], step: 7 };
+  const code = G.encodeGuide(full);
+  assert.ok(code.length <= 7, 'a cube, its starting colour, the open steps and the step on screen fit in seven characters: ' + code);
+  assert.deepEqual(G.decodeGuide(code), full);
+  // Every state a child can be in survives the trip there and back.
+  for (const base of [null, ...G.NAMES]) {
+    for (let step = 0; step <= 9; step++) {
+      const state = { centres, base, open: step ? [step] : [], step };
+      assert.deepEqual(G.decodeGuide(G.encodeGuide(state)) || { centres: {}, base: null, open: [], step: 0 }, state);
+    }
+  }
+  const everyStepOpen = { centres, base: 'red', open: [1, 2, 3, 4, 5, 6, 7, 8, 9], step: 9 };
+  assert.deepEqual(G.decodeGuide(G.encodeGuide(everyStepOpen)), everyStepOpen, 'all nine open is still a link');
+  const half = { centres: { U: 'blue', F: 'green' }, base: null, open: [1], step: 1 };
+  assert.deepEqual(G.decodeGuide(G.encodeGuide(half)), half, 'a half-painted cube travels too');
+  assert.equal(G.encodeGuide({ centres: {}, base: null, open: [], step: 0 }), '', 'an untouched page needs no link');
+  // Nonsense in the address bar leaves the page at step 1 rather than part-built.
+  assert.equal(G.decodeGuide('!!'), null);
+  assert.equal(G.decodeGuide('zzzzzzzz'), null);
+  assert.equal(G.decodeGuide(''), null);
+  assert.equal(G.decodeGuide(G.encodeGuide({ centres: { U: 'red', D: 'red' }, base: null, open: [], step: 0 })), null,
+    'one colour on two sides is not a cube');
+  assert.equal(G.decodeGuide(G.encodeGuide({ centres: { U: 'blue' }, base: 'red', open: [], step: 0 })), null,
+    'nor is a starting colour that is nowhere on it');
+});
+
 test('strip arrows agree with actual sticker motion on all six faces and reverse for inverse turns', () => {
   const labels = Int8Array.from({ length: 54 }, (_, i) => i);
   for (const face of L.FACE_ORDER) for (const suffix of ['', "'"]) {
