@@ -7,6 +7,10 @@
   --line: #d9dee8;
   --accent: #00a7bd;
   --accent-ink: #00343b;
+  /* Getting the cube ready is pink; solving it is the teal above. */
+  --prep: #e0468b;
+  --prep-ink: #8c0f4d;
+  --prep-tint: #ffe4f0;
   --mat: #2b3042;
   --good: #1aa65b;
   --warn: #e8702a;
@@ -458,10 +462,6 @@ body.is-starting .wrap {
 }
 /* Only visible stickers take clicks; empty 3D containers must not cover controls. */
 .sticker[data-facelet] { pointer-events: auto; }
-/* Glass cube: the panes without a colour are see-through and their backs are
-   drawn, so the colours already chosen show through from the far side. */
-.cube.is-glass .sticker { border-color: rgba(198, 232, 245, .16); }
-.cube.is-glass .sticker[data-facelet] { backface-visibility: visible; }
 /* Contrast and a soft rim single out the face without recolouring its stickers. */
 .cube .sticker[data-facelet]::after {
   content: ''; position: absolute; inset: 0; border-radius: 5px;
@@ -584,7 +584,8 @@ body.is-starting .wrap {
 .guide-header { display: grid; gap: 12px; }
 .guide-header h1 { font-size: clamp(1.7rem, 5vw, 2.3rem); }
 .guide-header > p { color: var(--muted); }
-.guide-colours { min-width: 0; display: grid; justify-items: center; gap: 10px; margin: 24px 0 12px; padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); }
+.guide-colours { min-width: 0; display: grid; justify-items: center; gap: 10px; }
+.guide-colours .guide-setup { text-align: center; }
 .guide-colours > * { max-width: 100%; }
 .guide-colours h2 { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; text-align: center; }
 .guide-colours > p { color: var(--muted); font-size: .85rem; text-align: center; }
@@ -599,24 +600,62 @@ body.is-starting .wrap {
 .guide-centre-question { position: absolute; inset: 0; backface-visibility: hidden; transform: translateZ(.1px); display: grid; place-items: center; font: 800 20px/1 var(--font-display); color: #edf8ff; text-shadow: 0 1px 3px #0b1420; pointer-events: none; }
 .guide-prompt-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
 #guide-face-prompt { font: 800 .95rem var(--font-display); color: var(--ink); }
-#guide-face-count { font-size: .75rem; color: var(--muted); }
-.guide-toolbar { padding: 10px 14px; }
+.guide-toolbar { padding: 12px 16px; }
+/* Room for the ring around whichever colour is in hand. */
+.guide-toolbar .palette { gap: 10px; }
+.guide-toolbar .palette button[aria-pressed="true"] { outline-width: 3px; outline-offset: 2px; }
 .guide-toolbar .palette button { color: #fff; }
 .guide-toolbar .palette button.sw-white, .guide-toolbar .palette button.sw-yellow, .guide-toolbar .palette button.sw-orange { color: #1b2130; }
+/* Choosing which colour to solve first: the child's own six, smaller than the
+   painting swatches and carrying no tick — the ring shows the chosen one. */
+.base-palette { justify-content: flex-start; gap: 14px; margin: 6px 0 12px; }
+.base-palette button { width: 36px; height: 36px; font-size: 1rem; color: #fff; }
+.base-palette button.sw-white, .base-palette button.sw-yellow, .base-palette button.sw-orange { color: var(--ink); }
+.base-palette button[aria-pressed="true"] { outline-width: 3px; outline-offset: 2px; }
 .guide-hint-line { display: grid; gap: 2px; font-size: .72rem; }
 #guide-face-status { color: #007585; font-weight: 700; min-height: 1em; }
-.guide-configured { display: flex; align-items: center; gap: 16px; width: 100%; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 4px; }
-#guide-configured-cube { width: 94px; flex: 0 0 94px; }
-.guide-configured strong { font: 800 1rem var(--font-display); }
-.guide-configured p { color: var(--muted); font-size: .8rem; margin-block: 6px 12px; }
-.guide-centre-reset { margin-left: auto; font-size: .8rem; }
-@media (max-width: 560px) {
-  .guide-configured { gap: 12px; }
-  #guide-configured-cube { width: 78px; flex-basis: 78px; }
-}
+.guide-centre-reset { justify-self: end; font-size: .8rem; }
+/* The steps run down a rail that travels with the page, so a child always knows
+   where they are and can jump. There is no room for it beside a narrow page, so
+   there it lies across the top instead. */
 .guide-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 12px 0; margin-block: 12px; background: var(--bg); }
-.guide-nav button { flex: 1; min-width: 0; min-height: 42px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--muted); font-family: var(--font-display); font-weight: 800; cursor: pointer; }
+.guide-nav button {
+  flex: 1; min-width: 0; min-height: 42px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--muted); font-family: var(--font-display); font-weight: 800; cursor: pointer;
+}
+.guide-nav button.is-prep { border-color: #f3c4db; color: var(--prep-ink); }
 .guide-nav button[aria-current] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.guide-nav button.is-prep[aria-current] { background: var(--prep); border-color: var(--prep); color: #fff; }
+.guide-nav button:disabled { opacity: .45; cursor: default; }
+/* Nine buttons across a phone would be too small to hit, so they wrap. */
+@media (max-width: 560px) {
+  .guide-nav { flex-wrap: wrap; gap: 5px; }
+  .guide-nav button { flex: 1 0 38px; min-height: 38px; }
+}
+@media (min-width: 900px) {
+  .guide-nav {
+    position: fixed; top: 50%; transform: translateY(-50%); margin: 0; padding: 0;
+    left: max(12px, calc(50vw - 460px)); display: grid; gap: 8px; background: none;
+  }
+  .guide-nav button { width: 40px; height: 40px; min-height: 0; border-radius: 50%; }
+}
+/* A step arrives on its own, rising into place, so the page never unrolls a
+   wall of cards at once. */
+@keyframes step-arrives {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+.guide-stage.is-arriving { animation: step-arrives .32s ease-out both; }
+/* Getting ready wears pink; the seven solving steps keep the teal. */
+.guide-prep .guide-number { background: var(--prep-tint); color: var(--prep-ink); }
+.guide-prep .guide-heading small { color: var(--prep-ink); font-weight: 700; }
+.guide-prep { border-color: #f3c4db; }
+.guide-prep .guide-summary:focus-visible { outline-color: var(--prep); }
+.prep-count {
+  display: grid; place-items: center; min-width: 46px; height: 28px; padding: 0 8px;
+  border-radius: 999px; background: var(--prep-tint); color: var(--prep-ink);
+  font: 800 .78rem var(--font-display); white-space: nowrap;
+}
 .guide-stage { margin-bottom: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; scroll-margin-top: 76px; }
 .guide-summary { display: flex; align-items: center; gap: 14px; padding: 14px 18px; list-style: none; cursor: pointer; border-radius: 20px; }
 .guide-summary::-webkit-details-marker { display: none; }

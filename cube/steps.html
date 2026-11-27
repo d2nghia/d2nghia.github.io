@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261124p">
+<link rel="stylesheet" href="style.css?v=20261124r">
 </head>
 <body class="manual-guide">
 <div class="wrap">
@@ -17,25 +17,42 @@
     <h1 data-t="guide.title">Solve with pictures</h1>
     <p data-t="guide.lede">Open a step. Follow the arrows in order.</p>
   </header>
-  <section class="guide-colours" aria-labelledby="guide-centres-title">
-    <h2 id="guide-centres-title" data-t="guide.centres.title">Your six centre colours</h2>
-    <p data-t="guide.centres.hint">Keep your starting face underneath. Match the centre colour on each face.</p>
-    <div class="cap-model guide-model">
-      <div class="cube-stage" id="guide-centre-cube" tabindex="0" role="group" aria-describedby="guide-cube-hint"></div>
-    </div>
-    <p class="guide-prompt-line"><span id="guide-face-prompt"></span><span id="guide-face-count"></span></p>
-    <div class="toolbar guide-toolbar">
-      <div class="palette" id="guide-centre-palette" role="group" aria-labelledby="guide-face-prompt"></div>
-    </div>
-    <p class="small center guide-hint-line"><span id="guide-cube-hint" data-t="guide.centres.drag">Drag to rotate · A side still showing “?” has no colour yet</span><span id="guide-face-status" role="status"></span></p>
-    <div class="guide-configured" id="guide-orientation" hidden>
-      <span id="guide-configured-cube" aria-hidden="true"></span>
-      <div><strong data-t="guide.centres.ready">Your cube is ready</strong><p id="guide-configured-note"></p><button class="btn small" id="guide-start" type="button" data-t="guide.centres.start">See the steps ↓</button></div>
-    </div>
-    <button class="linkish guide-centre-reset" id="guide-centre-reset" type="button" data-t="guide.centres.reset">Choose colours again</button>
-  </section>
-  <nav class="guide-nav" id="guide-nav" aria-label="Steps" hidden></nav>
-  <main id="stages" hidden></main>
+  <nav class="guide-nav" id="guide-nav" aria-label="Steps"></nav>
+  <main id="stages">
+    <details class="guide-stage guide-prep" id="step-centres" open>
+      <summary class="guide-summary">
+        <span class="guide-number">1</span>
+        <span class="guide-heading"><h2 data-t="guide.centres.title">Your six centre colours</h2><small data-t="guide.prep">Getting ready</small></span>
+        <span class="guide-goal"><span class="prep-count" id="guide-face-count"></span></span>
+        <span class="guide-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="guide-body guide-colours">
+        <p class="guide-setup" data-t="guide.centres.hint">Keep your starting face underneath. Match the centre colour on each face.</p>
+        <div class="cap-model guide-model">
+          <div class="cube-stage" id="guide-centre-cube" tabindex="0" role="group" aria-describedby="guide-cube-hint"></div>
+        </div>
+        <p class="guide-prompt-line"><span id="guide-face-prompt"></span></p>
+        <div class="toolbar guide-toolbar">
+          <div class="palette" id="guide-centre-palette" role="group" aria-labelledby="guide-face-prompt"></div>
+        </div>
+        <p class="small center guide-hint-line"><span id="guide-cube-hint" data-t="guide.centres.drag">Drag to rotate · A side still showing “?” has no colour yet</span><span id="guide-face-status" role="status"></span></p>
+        <button class="linkish guide-centre-reset" id="guide-centre-reset" type="button" data-t="guide.centres.reset">Choose colours again</button>
+      </div>
+    </details>
+    <details class="guide-stage guide-prep" id="step-base">
+      <summary class="guide-summary">
+        <span class="guide-number">2</span>
+        <span class="guide-heading"><h2 id="guide-base-label" data-t="guide.centres.pick">Which colour do you want to solve first?</h2><small data-t="guide.prep">Getting ready</small></span>
+        <span class="guide-goal" id="guide-configured-cube" aria-hidden="true"></span>
+        <span class="guide-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="guide-body">
+        <div class="palette base-palette" id="guide-base" role="group" aria-labelledby="guide-base-label"></div>
+        <p class="guide-setup" id="guide-configured-note"></p>
+      </div>
+    </details>
+    <div id="solving"></div>
+  </main>
 
   <footer class="page-links home-navigation">
     <a class="home-button" href="index.html" id="go-home">
@@ -45,10 +62,10 @@
   </footer>
 </div>
 
-<script src="lang.js?v=20261124b"></script>
+<script src="lang.js?v=20261127a"></script>
 <script src="solver.js?v=20261124a"></script>
-<script src="cubeview.js?v=20261124k"></script>
-<script src="step-diagrams.js?v=20261123c"></script>
-<script src="steps.js?v=20261124d"></script>
+<script src="cubeview.js?v=20261124l"></script>
+<script src="step-diagrams.js?v=20261123d"></script>
+<script src="steps.js?v=20261127a"></script>
 </body>
 </html>
