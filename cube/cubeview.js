@@ -99,10 +99,6 @@
     // The whole mat accepts drags; the smaller stage still controls cube sizing.
     var surface = host.closest('.cap-model, .mat') || host;
     var built = build(host), state = L.solvedState(), busy = false;
-    // Glass: every pane the child has not coloured yet stays see-through, so the
-    // colours on the far side show through and no face can hide its "?".
-    var glass = !!options.glass;
-    built.cube.classList.toggle('is-glass', glass);
     // One glow plane per side lets the focus fade between faces as we spin.
     // These follow the cube in 3D and never intercept sticker painting or dragging.
     var lights = {};
@@ -119,6 +115,9 @@
     var onView = null;
     var view = { rx: -22, ry: -32 };
     var hintFace = null, hintTimer = 0, demo = null, repair = null;
+    // Squares that keep an arrow for as long as they are round the back, outside
+    // of any validation: the centre picker points at the sides still to colour.
+    var pointers = [];
 
     function clearHints() {
       clearTimeout(hintTimer);
@@ -222,9 +221,9 @@
         Object.keys(c.faces).forEach(function (f) {
           var idx = FACELET_AT[c.pos.join(',') + '|' + f];
           var el = c.faces[f];
-          if (idx == null) { el.style.background = glass ? 'transparent' : DEAD; el.style.boxShadow = 'none'; return; }
+          if (idx == null) { el.style.background = DEAD; el.style.boxShadow = 'none'; return; }
           var n = names[idx];
-          el.style.background = n ? HEX[n] : (glass ? 'transparent' : UNSEEN);
+          el.style.background = n ? HEX[n] : UNSEEN;
           el.style.boxShadow = n ? 'none' : 'inset 0 0 0 2px rgba(255,255,255,.18)';
           el.classList.toggle('is-focused', f === focusFace);
           el.classList.toggle('validation-target', !!repair && repair.indices.indexOf(idx) >= 0);
@@ -471,8 +470,8 @@
     function drawArrows() {
       if (!built.arrows) return;
       built.arrows.innerHTML = '';
-      if (!repair || !repair.arrows) return;
-      repair.indices.forEach(function (idx) {
+      var marked = repair && repair.arrows ? pointers.concat(repair.indices) : pointers;
+      marked.forEach(function (idx) {
         var side = faceAt(L.FACELETS[L.FACE_INDEX[L.FACELETS[idx].face] * 9 + 4].pos, view.rx, view.ry);
         if (side.z >= AIM_SEEN) return;
         // A square straight behind the middle of the cube gives no direction
@@ -592,6 +591,11 @@
       colours: function (fc) { stopDemo(); faceColour = fc; repaint(null); },
       setNames: function (arr) { stopDemo(); if (arr !== names) clearHints(); names = arr; repaint(null); },
       showMissing: showMissing,
+      /** Point a curved arrow at each of these squares whenever it is hidden. */
+      pointAt: function (indices) {
+        pointers = indices ? indices.slice() : [];
+        drawArrows();
+      },
       showRepair: showRepair,
       stopRepair: stopRepair,
       onSticker: function (cb) { onSticker = cb; },

@@ -1708,3 +1708,24 @@ test('a square round the back is pointed at, and the arrow follows as the cube t
   f.get('cap-issue-close').onclick();
   assert.deepEqual(arrows('cap-issue-cube'), [], 'and the arrows go with the suggestions');
 });
+
+test('a square can keep its arrow outside any suggestion, as the centre picker needs', () => {
+  // The step guide's picker has no validation running: the sides still waiting
+  // for a colour carry an arrow for as long as they are round the back, and the
+  // arrow leaves the moment the cube is turned to them.
+  const f = fixture({ app: true, persistence: true, autoSolve: false,
+    hash: P.encode({ view: 'capture', names: Array(54).fill(null) }) });
+  const arrows = () => f.get('cap-cube').children.find(el => el.className === 'repair-arrows')
+    .children.map(el => Math.round(Number(el.style.transform.match(/rotate\((-?[\d.]+)deg\)/)[1])));
+  const top = L.FACE_INDEX.U * 9 + 4, bottom = L.FACE_INDEX.D * 9 + 4;
+  f.capture.look(-42, 0, false);
+  f.capture.pointAt([top, bottom]);
+  assert.deepEqual(arrows(), [90], 'the bottom side is behind, so its arrow stands below');
+  f.capture.look(42, 0, false);
+  assert.deepEqual(arrows(), [-90], 'turned over, it is the top side that is pointed at');
+  f.capture.pointAt([bottom]);
+  assert.deepEqual(arrows(), [], 'a side the child is looking at needs no arrow');
+  f.capture.pointAt([]);
+  f.capture.look(-42, 0, false);
+  assert.deepEqual(arrows(), [], 'nothing left to colour, nothing pointed at');
+});
